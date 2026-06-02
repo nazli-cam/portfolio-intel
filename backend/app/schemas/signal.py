@@ -13,6 +13,8 @@ class SignalResponse(BaseModel):
     title: str
     description: Optional[str] = None
     source_url: Optional[str] = None
+    confidence: Optional[float] = None
+    person_name: Optional[str] = None
     is_read: bool
     is_alerted: bool
     detected_at: datetime
@@ -30,6 +32,8 @@ class SignalCreate(BaseModel):
     title: str
     description: Optional[str] = None
     source_url: Optional[str] = None
+    confidence: Optional[float] = None
+    person_name: Optional[str] = None
 
 
 class SignalUpdate(BaseModel):

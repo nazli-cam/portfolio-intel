@@ -18,14 +18,10 @@ class Settings(BaseSettings):
     # Apollo.io
     APOLLO_API_KEY: Optional[str] = None
 
-    # Gmail OAuth2
-    GMAIL_CLIENT_ID: Optional[str] = None
-    GMAIL_CLIENT_SECRET: Optional[str] = None
-    GMAIL_REFRESH_TOKEN: Optional[str] = None
-    GMAIL_SENDER_EMAIL: str = "alerts@example.com"
-
-    # Alert recipients (comma-separated string)
-    ALERT_EMAIL_RECIPIENTS: str = ""
+    # Gmail SMTP (App Password — not account password)
+    GMAIL_USER: str = ""          # sender address, e.g. alerts@yourfirm.com
+    GMAIL_APP_PASSWORD: str = ""  # Gmail App Password (16-char, spaces optional)
+    ALERT_EMAIL_RECIPIENTS: str = ""  # comma-separated recipient list
 
     # Frontend URL for CORS
     FRONTEND_URL: str = "http://localhost:5173"

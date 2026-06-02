@@ -91,15 +91,28 @@ async def process_single_company(company_id: int) -> None:
 
         from ..models.signal import compute_dedup_hash
 
+        # Map Claude's signal type values to SignalType enum
+        _TYPE_MAP = {
+            "hire": SignalType.NEW_HIRE,
+            "new_hire": SignalType.NEW_HIRE,
+            "departure": SignalType.DEPARTURE,
+            "founder_post": SignalType.FOUNDER_POST,
+            "press": SignalType.OTHER,      # stored as OTHER; headline distinguishes it
+            "funding": SignalType.FUNDING,
+            "product": SignalType.PRODUCT_LAUNCH,
+            "product_launch": SignalType.PRODUCT_LAUNCH,
+            "partnership": SignalType.PARTNERSHIP,
+            "other": SignalType.OTHER,
+        }
+
         new_signals = []
         for s in signals_raw:
-            title = s.get("title", "")[:200]
+            # Claude returns "headline"; model stores as "title"
+            title = s.get("headline", s.get("title", ""))[:200]
+            if not title:
+                continue
 
-            signal_type_raw = s.get("type", "other").lower()
-            try:
-                signal_type = SignalType(signal_type_raw)
-            except ValueError:
-                signal_type = SignalType.OTHER
+            signal_type = _TYPE_MAP.get(s.get("type", "other").lower(), SignalType.OTHER)
 
             importance_raw = s.get("importance", "medium").lower()
             try:
@@ -111,15 +124,22 @@ async def process_single_company(company_id: int) -> None:
             if db.query(Signal).filter(Signal.dedup_hash == dedup_hash).first():
                 continue
 
+            # Claude returns "detail" and "source"; model stores as "description"/"source_url"
+            confidence = s.get("confidence")
+            if confidence is not None:
+                confidence = max(0.0, min(1.0, float(confidence)))
+
             signal = Signal(
                 company_id=company.id,
                 signal_type=signal_type,
                 importance=importance,
                 title=title,
-                description=s.get("description", "")[:500],
-                source_url=s.get("source_url"),
+                description=s.get("detail", s.get("description", ""))[:500],
+                source_url=s.get("source") or s.get("source_url"),
                 raw_data=json.dumps(raw_data)[:5000],
                 dedup_hash=dedup_hash,
+                confidence=confidence,
+                person_name=s.get("person_name"),
             )
             db.add(signal)
             new_signals.append(s)
@@ -129,7 +149,7 @@ async def process_single_company(company_id: int) -> None:
 
         logger.info(f"Saved {len(new_signals)} new signals for {company.name}")
 
-        # Send email alert for new signals (medium/high importance only)
+        # Alert on medium/high importance signals only
         alertable = [s for s in new_signals if s.get("importance") in ("medium", "high")]
         if alertable:
             await send_signal_alert(alertable, company.name)

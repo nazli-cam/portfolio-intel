@@ -1,6 +1,6 @@
 import enum
 import hashlib
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Enum, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Text, DateTime, Boolean, ForeignKey, Enum, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
@@ -33,6 +33,8 @@ class Signal(Base):
     description = Column(Text, nullable=True)
     source_url = Column(String, nullable=True)
     raw_data = Column(Text, nullable=True)  # JSON string of raw Apollo/source data
+    confidence = Column(Float, nullable=True)       # 0.0–1.0 from Claude
+    person_name = Column(String(200), nullable=True) # relevant person if applicable
     dedup_hash = Column(String(64), nullable=True, index=True, unique=True)
     is_read = Column(Boolean, default=False, index=True)
     is_alerted = Column(Boolean, default=False)
