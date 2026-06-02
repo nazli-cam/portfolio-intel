@@ -22,5 +22,15 @@ class SignalResponse(BaseModel):
         from_attributes = True
 
 
+class SignalCreate(BaseModel):
+    """Used by the Claude service to validate extracted signals before DB insert."""
+    company_id: int
+    signal_type: SignalType
+    importance: SignalImportance = SignalImportance.MEDIUM
+    title: str
+    description: Optional[str] = None
+    source_url: Optional[str] = None
+
+
 class SignalUpdate(BaseModel):
     is_read: Optional[bool] = None

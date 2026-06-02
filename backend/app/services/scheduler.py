@@ -89,21 +89,11 @@ async def process_single_company(company_id: int) -> None:
             db.commit()
             return
 
-        # Deduplicate: skip signals with same title already saved for this company in last 7 days
-        from datetime import timedelta
-        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
-        existing_titles = {
-            s.title
-            for s in db.query(Signal)
-            .filter(Signal.company_id == company.id, Signal.created_at >= cutoff)
-            .all()
-        }
+        from ..models.signal import compute_dedup_hash
 
         new_signals = []
         for s in signals_raw:
             title = s.get("title", "")[:200]
-            if title in existing_titles:
-                continue
 
             signal_type_raw = s.get("type", "other").lower()
             try:
@@ -117,6 +107,10 @@ async def process_single_company(company_id: int) -> None:
             except ValueError:
                 importance = SignalImportance.MEDIUM
 
+            dedup_hash = compute_dedup_hash(company.id, signal_type.value, title)
+            if db.query(Signal).filter(Signal.dedup_hash == dedup_hash).first():
+                continue
+
             signal = Signal(
                 company_id=company.id,
                 signal_type=signal_type,
@@ -125,10 +119,10 @@ async def process_single_company(company_id: int) -> None:
                 description=s.get("description", "")[:500],
                 source_url=s.get("source_url"),
                 raw_data=json.dumps(raw_data)[:5000],
+                dedup_hash=dedup_hash,
             )
             db.add(signal)
             new_signals.append(s)
-            existing_titles.add(title)
 
         company.last_synced_at = datetime.now(timezone.utc)
         db.commit()
