@@ -162,7 +162,7 @@ Interactive Swagger docs at `http://localhost:8000/docs` when running locally.
 1. **Daily Scheduler** (APScheduler, 8 AM UTC) iterates each active portfolio company
 2. **Apollo.io** is queried for current employees and company enrichment data
 3. **Claude Sonnet** (`claude-sonnet-4-6`) analyzes the data with a system prompt cached for cost efficiency, extracting signals across 7 categories
-4. New signals are **deduplicated** (7-day window by title) and saved to SQLite
+4. New signals are **deduplicated** via a SHA-256 hash of `(company_id, type, title[:80])` stored as a unique DB constraint and saved to SQLite
 5. Medium/high importance signals trigger **Gmail alerts** to configured recipients
 6. Monthly **report generation** via Claude synthesizes all signals into an HTML report emailed to the team
 
