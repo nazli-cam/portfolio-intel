@@ -20,5 +20,6 @@ RUN mkdir -p /app/data
 # Expose port
 EXPOSE 8000
 
+force redeploy
 # Run with uvicorn
 CMD ["/bin/sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
