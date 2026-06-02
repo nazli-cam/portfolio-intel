@@ -1,6 +1,11 @@
-from pydantic_settings import BaseSettings
-from typing import Optional
+import logging
 import secrets
+from typing import Optional
+
+from pydantic import model_validator
+from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -29,6 +34,17 @@ class Settings(BaseSettings):
     # Scheduler times
     DAILY_SCHEDULER_HOUR: int = 8
     DAILY_SCHEDULER_MINUTE: int = 0
+
+    @model_validator(mode="after")
+    def _validate_gmail(self) -> "Settings":
+        if self.GMAIL_APP_PASSWORD:
+            cleaned = self.GMAIL_APP_PASSWORD.replace(" ", "")
+            if len(cleaned) != 16:
+                logger.warning(
+                    f"GMAIL_APP_PASSWORD has {len(cleaned)} chars after stripping spaces "
+                    f"(expected 16). Gmail SMTP will fail at runtime."
+                )
+        return self
 
     @property
     def alert_recipients_list(self) -> list[str]:

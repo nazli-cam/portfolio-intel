@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
@@ -24,6 +25,8 @@ def list_signals(
     company_id: Optional[int] = None,
     signal_type: Optional[SignalType] = None,
     unread_only: bool = False,
+    date_from: Optional[datetime] = Query(None, description="ISO-8601 UTC start, e.g. 2024-01-01T00:00:00Z"),
+    date_to: Optional[datetime] = Query(None, description="ISO-8601 UTC end, e.g. 2024-01-31T23:59:59Z"),
     limit: int = Query(50, le=200),
     offset: int = 0,
     db: Session = Depends(get_db),
@@ -37,6 +40,10 @@ def list_signals(
         q = q.filter(Signal.signal_type == signal_type)
     if unread_only:
         q = q.filter(Signal.is_read == False)
+    if date_from:
+        q = q.filter(Signal.detected_at >= date_from)
+    if date_to:
+        q = q.filter(Signal.detected_at <= date_to)
 
     signals = q.order_by(Signal.detected_at.desc()).offset(offset).limit(limit).all()
     return [_signal_response(s) for s in signals]
