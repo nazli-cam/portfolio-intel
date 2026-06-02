@@ -111,6 +111,14 @@ DAILY_SCHEDULER_MINUTE=0
 
 ## Deployment
 
+### Scheduler — Single Worker Requirement
+
+The daily job uses an in-process `AsyncIOScheduler` and an in-memory `is_running` flag to prevent concurrent runs. This works correctly with a single uvicorn worker (the default).
+
+**Do not run multiple workers** (`--workers 4`, `gunicorn -w 4`) without replacing the in-memory flag with a distributed lock (Redis `SET NX`, database row, etc.). Each worker process has its own scheduler instance and its own copy of `is_running`, so the duplicate-run guard will not fire across processes and every worker will execute the daily job independently.
+
+The Railway deployment in `railway.toml` uses the default single-worker uvicorn invocation — do not add `--workers` to that command.
+
 ### Backend → Railway
 
 1. Push to GitHub

@@ -258,20 +258,26 @@ async def run_daily_job() -> None:
                     digest_signals[company_name] = alertable
 
             except Exception as e:
-                logger.error(f"[scheduler] Unhandled error on {company_name}: {e}", exc_info=True)
+                # Log + continue — one bad company should not abort the rest
+                err_msg = f"{company_name}: {e}"
+                logger.error(f"[scheduler] Unhandled error on {err_msg}", exc_info=True)
                 errors += 1
+                _job_state["last_error"] = err_msg  # surface most-recent error
 
-            # Polite pause between companies to avoid hammering Apollo/Claude
+            # Polite pause between companies — AsyncIOScheduler runs async def
+            # coroutines directly on the event loop, so await asyncio.sleep is correct.
             await asyncio.sleep(2)
 
-        # --- Single digest email for the whole run ---
-        if digest_signals:
-            try:
-                await send_daily_digest(digest_signals)
-            except Exception as e:
-                logger.error(f"[scheduler] Failed to send digest email: {e}", exc_info=True)
-        else:
-            logger.info("[scheduler] No medium/high signals — skipping digest email")
+        # --- Always send a digest so the team knows the scheduler is alive.
+        # If no medium/high signals, send a lightweight heartbeat instead of silence.
+        try:
+            await send_daily_digest(
+                company_signals=digest_signals,
+                total_new=total_new,
+                companies_checked=len(company_ids),
+            )
+        except Exception as e:
+            logger.error(f"[scheduler] Failed to send digest email: {e}", exc_info=True)
 
         duration = (datetime.now(timezone.utc) - started_at).total_seconds()
         _job_state.update(

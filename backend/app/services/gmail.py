@@ -62,35 +62,49 @@ def _send(subject: str, html_body: str, recipients: list[str]) -> bool:
     return False
 
 
-async def send_daily_digest(company_signals: dict[str, list[dict]]) -> bool:
+async def send_daily_digest(
+    company_signals: dict[str, list[dict]],
+    total_new: int = 0,
+    companies_checked: int = 0,
+) -> bool:
     """
-    Send a single digest email after the daily job, grouped by company.
-    `company_signals`: {company_name: [signal dicts]} — only medium/high signals.
-    Skips send if the dict is empty.
-    """
-    if not company_signals:
-        logger.info("No signals for digest — skipping email")
-        return False
+    Send a single digest email after the daily job.
 
+    Always sends — even when no medium/high signals were found — so the team
+    can distinguish a quiet day from a scheduler failure.
+
+    Args:
+        company_signals: {company_name: [signal dicts]} for medium/high signals only.
+        total_new: total signals saved this run (all importance levels).
+        companies_checked: number of active companies processed.
+    """
     recipients = settings.alert_recipients_list
     if not recipients:
-        logger.info("No alert recipients — skipping digest")
+        logger.info("No alert recipients configured — skipping digest")
         return False
 
-    total = sum(len(v) for v in company_signals.values())
+    notable = sum(len(v) for v in company_signals.values())
+    run_date = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
     template = _jinja_env.get_template("daily_digest.html")
     html_body = template.render(
-        company_signals=company_signals,
-        total_signals=total,
-        company_count=len(company_signals),
-        run_date=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        company_signals=company_signals,       # empty dict → heartbeat mode in template
+        notable_signals=notable,
+        total_new=total_new,
+        companies_checked=companies_checked,
+        run_date=run_date,
     )
 
-    subject = (
-        f"[Portfolio Digest] {total} new signal{'s' if total != 1 else ''} "
-        f"across {len(company_signals)} compan{'ies' if len(company_signals) != 1 else 'y'} "
-        f"— {datetime.now(timezone.utc).strftime('%b %d')}"
-    )
+    if notable:
+        subject = (
+            f"[Portfolio Digest] {notable} notable signal{'s' if notable != 1 else ''} "
+            f"— {datetime.now(timezone.utc).strftime('%b %d')}"
+        )
+    else:
+        subject = (
+            f"[Portfolio Digest] No notable signals — {datetime.now(timezone.utc).strftime('%b %d')}"
+        )
+
     return _send(subject, html_body, recipients)
 
 
