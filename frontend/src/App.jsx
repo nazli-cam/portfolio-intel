@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import Companies from './pages/Companies'
 import Signals from './pages/Signals'
 import Reports from './pages/Reports'
+import ErrorBoundary from './components/ErrorBoundary'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -53,10 +54,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }

@@ -11,7 +11,7 @@ export default function Navbar() {
   const { data: unreadData } = useQuery({
     queryKey: ['unread-count'],
     queryFn: () => signalsApi.unreadCount().then((r) => r.data),
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
   })
 
   const unread = unreadData?.unread_count ?? 0

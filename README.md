@@ -32,7 +32,20 @@ portfolio-intel/
 
 ## Quick Start
 
-### Backend
+### Option A — Docker Compose (recommended)
+
+```bash
+cp backend/.env.example backend/.env
+# Edit backend/.env with your API keys
+
+docker compose up --build
+# Backend:  http://localhost:8000  (Swagger: /docs)
+# Frontend: http://localhost:5173
+```
+
+### Option B — Run locally
+
+**Backend**
 
 ```bash
 cd backend
@@ -48,9 +61,7 @@ uvicorn app.main:app --reload
 # Swagger docs at http://localhost:8000/docs
 ```
 
-Default login: `admin@portfoliointel.com` / `changeme123`
-
-### Frontend
+**Frontend**
 
 ```bash
 cd frontend
@@ -62,6 +73,8 @@ cp .env.example .env
 npm run dev
 # App available at http://localhost:5173
 ```
+
+Default login: `admin@portfoliointel.com` / `changeme123` (change in production)
 
 ## Configuration
 
@@ -180,12 +193,18 @@ Interactive Swagger docs at `http://localhost:8000/docs` when running locally.
 
 ## Adding Team Members
 
-Use the `/auth/register` endpoint:
+Only admin users can register new team members. Use the `/auth/register` endpoint with an admin JWT:
 
 ```bash
+# First, log in as admin to get a token
+TOKEN=$(curl -s -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@portfoliointel.com","password":"changeme123"}' | jq -r .access_token)
+
+# Register a new analyst
 curl -X POST http://localhost:8000/auth/register \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"email":"analyst@firm.com","name":"Jane Smith","password":"secure123","role":"analyst"}'
 ```
 

@@ -47,8 +47,11 @@ def unread_count(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    count = db.query(Signal).filter(Signal.is_read == False).count()
-    return {"unread_count": count}
+    from ..models.signal import SignalImportance
+    unread = db.query(Signal).filter(Signal.is_read == False).count()
+    total = db.query(Signal).count()
+    high = db.query(Signal).filter(Signal.importance == SignalImportance.HIGH).count()
+    return {"unread_count": unread, "total_count": total, "high_count": high}
 
 
 @router.get("/{signal_id}", response_model=SignalResponse)

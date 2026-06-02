@@ -51,14 +51,15 @@ export default function Dashboard() {
     queryFn: () => signalsApi.list({ limit: 10 }).then((r) => r.data),
   })
 
-  const { data: unreadData } = useQuery({
+  const { data: counts } = useQuery({
     queryKey: ['unread-count'],
     queryFn: () => signalsApi.unreadCount().then((r) => r.data),
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
   })
 
-  const highSignals = signals.filter((s) => s.importance === 'high')
-  const unread = unreadData?.unread_count ?? 0
+  const unread = counts?.unread_count ?? 0
+  const totalSignals = counts?.total_count ?? 0
+  const highSignalCount = counts?.high_count ?? 0
 
   const triggerJob = async () => {
     try {
@@ -101,14 +102,14 @@ export default function Dashboard() {
         />
         <StatCard
           label="High-priority signals"
-          value={highSignals.length}
+          value={highSignalCount}
           icon={TrendingUp}
           color="bg-red-500"
-          onClick={() => navigate('/signals?importance=high')}
+          onClick={() => navigate('/signals')}
         />
         <StatCard
           label="Signals (all time)"
-          value={signals.length > 0 ? undefined : 0}
+          value={totalSignals}
           icon={Zap}
           color="bg-emerald-500"
           onClick={() => navigate('/signals')}

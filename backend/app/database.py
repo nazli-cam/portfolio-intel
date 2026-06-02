@@ -28,5 +28,5 @@ def get_db():
 
 
 def create_tables():
-    from .models import user, company, signal  # noqa: F401 - ensure models are imported
+    from .models import user, company, signal, report  # noqa: F401 - ensure models are imported
     Base.metadata.create_all(bind=engine)

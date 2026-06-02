@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
@@ -90,9 +90,11 @@ def health():
 
 
 @app.post("/admin/trigger-daily-job", tags=["admin"])
-async def trigger_daily_job():
-    """Manually trigger the daily intelligence gathering job."""
+async def trigger_daily_job(
+    background_tasks: BackgroundTasks,
+    current_user=Depends(auth.get_current_user),
+):
+    """Manually trigger the daily intelligence gathering job (admin only)."""
     from .services.scheduler import run_daily_job
-    import asyncio
-    asyncio.create_task(run_daily_job())
+    background_tasks.add_task(run_daily_job)
     return {"message": "Daily job triggered in background"}
