@@ -173,7 +173,7 @@ export default function Signals() {
                 </span>
 
                 <div className="flex-1 min-w-0">
-                  {/* Company + importance */}
+                  {/* Company + importance + NEW badge */}
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <span className="text-xs font-semibold text-gray-600">{s.company_name}</span>
                     <span className={IMPORTANCE_CLASS[s.importance] || 'badge-low'}>
@@ -189,6 +189,11 @@ export default function Signals() {
                   {/* Title */}
                   <p className="text-sm font-medium text-gray-900">{s.title}</p>
 
+                  {/* Person name */}
+                  {s.person_name && (
+                    <p className="text-xs text-blue-500 font-medium mt-0.5">{s.person_name}</p>
+                  )}
+
                   {/* Description */}
                   {s.description && (
                     <p className="text-xs text-gray-500 mt-1 line-clamp-2">{s.description}</p>
@@ -199,6 +204,12 @@ export default function Signals() {
                   <span className="text-xs text-gray-400">
                     {formatDistanceToNow(new Date(s.detected_at), { addSuffix: true })}
                   </span>
+                  {/* Confidence indicator */}
+                  {s.confidence != null && (
+                    <span className="text-[10px] text-gray-400 font-medium">
+                      {Math.round(s.confidence * 100)}% conf.
+                    </span>
+                  )}
                   {s.source_url && (
                     <a
                       href={s.source_url}

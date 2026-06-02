@@ -40,7 +40,9 @@ export function AuthProvider({ children }) {
     return userData
   }, [])
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // Tell the backend to clear the refresh token — fire and forget
+    authApi.logout().catch(() => {})
     localStorage.removeItem('access_token')
     localStorage.removeItem('user')
     setUser(null)

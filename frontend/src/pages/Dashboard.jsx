@@ -1,9 +1,14 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { formatDistanceToNow } from 'date-fns'
-import { Building2, Zap, TrendingUp, Bell, RefreshCw } from 'lucide-react'
+import { formatDistanceToNow, format } from 'date-fns'
+import {
+  Building2, Zap, TrendingUp, Bell, RefreshCw,
+  Clock, CheckCircle, AlertCircle, Loader,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { companiesApi, signalsApi, adminApi } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
+import clsx from 'clsx'
 
 const IMPORTANCE_CLASS = {
   high: 'badge-high',
@@ -38,17 +43,92 @@ function StatCard({ label, value, icon: Icon, color, onClick }) {
   )
 }
 
+function SchedulerStatus() {
+  const { data: status, isLoading, refetch } = useQuery({
+    queryKey: ['scheduler-status'],
+    queryFn: () => adminApi.schedulerStatus().then((r) => r.data),
+    refetchInterval: 15_000,
+  })
+
+  const triggerMutation = useMutation({
+    mutationFn: () => adminApi.triggerDailyJob(),
+    onSuccess: () => {
+      toast.success('Intelligence job triggered — signals will appear shortly')
+      refetch()
+    },
+    onError: (err) => {
+      const detail = err.response?.data?.detail
+      if (err.response?.status === 409) {
+        toast.error('Job is already running')
+      } else {
+        toast.error(detail || 'Failed to trigger job')
+      }
+    },
+  })
+
+  if (isLoading) return null
+
+  const statusIcon = status?.is_running
+    ? <Loader size={14} className="animate-spin text-blue-500" />
+    : status?.last_run_status === 'success'
+    ? <CheckCircle size={14} className="text-emerald-500" />
+    : status?.last_run_status === 'partial'
+    ? <AlertCircle size={14} className="text-amber-500" />
+    : status?.last_run_status === 'error'
+    ? <AlertCircle size={14} className="text-red-500" />
+    : <Clock size={14} className="text-gray-400" />
+
+  return (
+    <div className="card p-4 flex items-center justify-between gap-4">
+      <div className="flex items-center gap-3">
+        {statusIcon}
+        <div>
+          <p className="text-sm font-medium text-gray-800">
+            {status?.is_running ? 'Job running…' : 'Daily intelligence job'}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {status?.last_run_at
+              ? <>Last run {formatDistanceToNow(new Date(status.last_run_at), { addSuffix: true })}
+                  {' '}· {status.last_run_new_signals} new signals
+                  {status.last_run_status === 'partial' && ' · some errors'}</>
+              : 'Never run'}
+            {status?.next_run_at && !status?.is_running && (
+              <> · Next: {format(new Date(status.next_run_at), 'HH:mm')} UTC</>
+            )}
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={() => triggerMutation.mutate()}
+        disabled={status?.is_running || triggerMutation.isPending}
+        className="btn-secondary flex items-center gap-2 text-sm py-1.5 shrink-0"
+      >
+        <RefreshCw size={14} className={clsx(status?.is_running && 'animate-spin')} />
+        Run now
+      </button>
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
 
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
     queryFn: () => companiesApi.list().then((r) => r.data),
   })
 
-  const { data: signals = [] } = useQuery({
-    queryKey: ['signals', 'recent'],
+  // Separate queries: one for the feed (small), one for stats (larger)
+  const { data: recentSignals = [] } = useQuery({
+    queryKey: ['signals', 'feed'],
     queryFn: () => signalsApi.list({ limit: 10 }).then((r) => r.data),
+  })
+
+  const { data: allSignals = [] } = useQuery({
+    queryKey: ['signals', 'stats'],
+    queryFn: () => signalsApi.list({ limit: 200 }).then((r) => r.data),
   })
 
   const { data: unreadData } = useQuery({
@@ -57,31 +137,19 @@ export default function Dashboard() {
     refetchInterval: 60_000,
   })
 
-  const highSignals = signals.filter((s) => s.importance === 'high')
+  const highCount = allSignals.filter((s) => s.importance === 'high').length
   const unread = unreadData?.unread_count ?? 0
-
-  const triggerJob = async () => {
-    try {
-      await adminApi.triggerDailyJob()
-      toast.success('Intelligence job triggered — check Signals in a few minutes')
-    } catch {
-      toast.error('Failed to trigger job')
-    }
-  }
 
   return (
     <div className="space-y-6 max-w-6xl">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Portfolio intelligence overview</p>
-        </div>
-        <button onClick={triggerJob} className="btn-secondary flex items-center gap-2 text-sm">
-          <RefreshCw size={15} />
-          Run intelligence job
-        </button>
+      <div>
+        <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Portfolio intelligence overview</p>
       </div>
+
+      {/* Scheduler status — admin only */}
+      {isAdmin && <SchedulerStatus />}
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -101,21 +169,21 @@ export default function Dashboard() {
         />
         <StatCard
           label="High-priority signals"
-          value={highSignals.length}
+          value={highCount}
           icon={TrendingUp}
           color="bg-red-500"
           onClick={() => navigate('/signals?importance=high')}
         />
         <StatCard
-          label="Signals (all time)"
-          value={signals.length > 0 ? undefined : 0}
+          label="Total signals"
+          value={allSignals.length}
           icon={Zap}
           color="bg-emerald-500"
           onClick={() => navigate('/signals')}
         />
       </div>
 
-      {/* Recent signals */}
+      {/* Recent signal feed */}
       <div className="card overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="font-semibold text-gray-900">Recent Signals</h2>
@@ -127,19 +195,20 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {signals.length === 0 ? (
+        {recentSignals.length === 0 ? (
           <div className="py-12 text-center text-gray-400 text-sm">
             <Zap size={32} className="mx-auto mb-3 opacity-30" />
             <p>No signals yet. Add portfolio companies and run the intelligence job.</p>
           </div>
         ) : (
           <div className="divide-y divide-gray-50">
-            {signals.map((s) => (
+            {recentSignals.map((s) => (
               <div
                 key={s.id}
-                className={`px-5 py-3.5 flex items-start gap-3 hover:bg-gray-50 cursor-pointer ${
-                  !s.is_read ? 'bg-blue-50/40' : ''
-                }`}
+                className={clsx(
+                  'px-5 py-3.5 flex items-start gap-3 hover:bg-gray-50 cursor-pointer',
+                  !s.is_read && 'bg-blue-50/40'
+                )}
                 onClick={() => navigate('/signals')}
               >
                 <div className="mt-0.5 shrink-0">
@@ -150,10 +219,16 @@ export default function Dashboard() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs text-gray-500 font-medium">{s.company_name}</span>
-                    <span className="text-xs text-gray-400">·</span>
+                    <span className="text-xs text-gray-300">·</span>
                     <span className="text-xs text-gray-400">
                       {TYPE_LABEL[s.signal_type] || s.signal_type}
                     </span>
+                    {s.person_name && (
+                      <>
+                        <span className="text-xs text-gray-300">·</span>
+                        <span className="text-xs text-blue-500 font-medium">{s.person_name}</span>
+                      </>
+                    )}
                   </div>
                   <p className="text-sm text-gray-900 mt-0.5 font-medium truncate">{s.title}</p>
                   {s.description && (

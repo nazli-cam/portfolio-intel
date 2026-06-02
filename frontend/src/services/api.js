@@ -33,6 +33,7 @@ api.interceptors.response.use(
 export const authApi = {
   login: (email, password) => api.post('/auth/login', { email, password }),
   me: () => api.get('/auth/me'),
+  logout: () => api.post('/auth/logout'),
   register: (data) => api.post('/auth/register', data),
 }
 
@@ -67,6 +68,7 @@ export const reportsApi = {
 
 // ─── Admin ────────────────────────────────────────────────────────────────────
 export const adminApi = {
+  schedulerStatus: () => api.get('/admin/scheduler/status'),
   triggerDailyJob: () => api.post('/admin/trigger-daily-job'),
 }
 
