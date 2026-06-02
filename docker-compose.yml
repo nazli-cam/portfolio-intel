@@ -10,21 +10,30 @@ services:
     env_file:
       - .env
     volumes:
-      - db_data:/app/data
+      # Bind-mount the specific file, not the directory.
+      # Mounting the dir causes SQLite locking issues on some Docker versions.
+      - ./data/portfolio.db:/app/portfolio.db
     environment:
-      - DATABASE_URL=sqlite:////app/data/portfolio_intel.db
+      - DATABASE_URL=sqlite:////app/portfolio.db
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # Baked into the Vite bundle at build time.
+        # nginx proxies /api/* → backend:8000/* so no CORS needed.
+        VITE_API_URL: /api
     ports:
       - "5173:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
-
-volumes:
-  db_data:
-    driver: local
