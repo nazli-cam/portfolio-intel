@@ -49,6 +49,29 @@ def list_signals(
     return [_signal_response(s) for s in signals]
 
 
+@router.get("/count")
+def signal_count(
+    company_id: Optional[int] = None,
+    signal_type: Optional[SignalType] = None,
+    importance: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return total signal count, optionally filtered. Used for dashboard stat cards."""
+    from ..models.signal import SignalImportance
+    q = db.query(Signal)
+    if company_id:
+        q = q.filter(Signal.company_id == company_id)
+    if signal_type:
+        q = q.filter(Signal.signal_type == signal_type)
+    if importance:
+        try:
+            q = q.filter(Signal.importance == SignalImportance(importance))
+        except ValueError:
+            pass
+    return {"count": q.count()}
+
+
 @router.get("/unread-count")
 def unread_count(
     db: Session = Depends(get_db),

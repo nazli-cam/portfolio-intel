@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { formatDistanceToNow, format } from 'date-fns'
 import {
   Building2, Zap, TrendingUp, Bell, RefreshCw,
-  Clock, CheckCircle, AlertCircle, Loader,
+  Clock, CheckCircle, AlertCircle, Loader, WifiOff,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { companiesApi, signalsApi, adminApi } from '../services/api'
@@ -44,10 +44,11 @@ function StatCard({ label, value, icon: Icon, color, onClick }) {
 }
 
 function SchedulerStatus() {
-  const { data: status, isLoading, refetch } = useQuery({
+  const { data: status, isLoading, isError, refetch } = useQuery({
     queryKey: ['scheduler-status'],
     queryFn: () => adminApi.schedulerStatus().then((r) => r.data),
     refetchInterval: 15_000,
+    retry: 2,
   })
 
   const triggerMutation = useMutation({
@@ -67,6 +68,15 @@ function SchedulerStatus() {
   })
 
   if (isLoading) return null
+
+  if (isError) {
+    return (
+      <div className="card p-4 flex items-center gap-3 text-gray-400">
+        <WifiOff size={14} />
+        <p className="text-sm">Scheduler status unavailable — backend may be restarting</p>
+      </div>
+    )
+  }
 
   const statusIcon = status?.is_running
     ? <Loader size={14} className="animate-spin text-blue-500" />
@@ -120,15 +130,20 @@ export default function Dashboard() {
     queryFn: () => companiesApi.list().then((r) => r.data),
   })
 
-  // Separate queries: one for the feed (small), one for stats (larger)
   const { data: recentSignals = [] } = useQuery({
     queryKey: ['signals', 'feed'],
     queryFn: () => signalsApi.list({ limit: 10 }).then((r) => r.data),
   })
 
-  const { data: allSignals = [] } = useQuery({
-    queryKey: ['signals', 'stats'],
-    queryFn: () => signalsApi.list({ limit: 200 }).then((r) => r.data),
+  // COUNT(*) queries — no limit, accurate regardless of portfolio size
+  const { data: totalData } = useQuery({
+    queryKey: ['signals', 'count', 'total'],
+    queryFn: () => signalsApi.count().then((r) => r.data),
+  })
+
+  const { data: highData } = useQuery({
+    queryKey: ['signals', 'count', 'high'],
+    queryFn: () => signalsApi.count({ importance: 'high' }).then((r) => r.data),
   })
 
   const { data: unreadData } = useQuery({
@@ -137,7 +152,8 @@ export default function Dashboard() {
     refetchInterval: 60_000,
   })
 
-  const highCount = allSignals.filter((s) => s.importance === 'high').length
+  const totalSignals = totalData?.count ?? '—'
+  const highCount = highData?.count ?? '—'
   const unread = unreadData?.unread_count ?? 0
 
   return (
@@ -176,7 +192,7 @@ export default function Dashboard() {
         />
         <StatCard
           label="Total signals"
-          value={allSignals.length}
+          value={totalSignals}
           icon={Zap}
           color="bg-emerald-500"
           onClick={() => navigate('/signals')}

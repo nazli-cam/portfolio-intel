@@ -52,6 +52,7 @@ export const signalsApi = {
   list: (params = {}) => api.get('/signals', { params }),
   get: (id) => api.get(`/signals/${id}`),
   update: (id, data) => api.patch(`/signals/${id}`, data),
+  count: (params = {}) => api.get('/signals/count', { params }),
   unreadCount: () => api.get('/signals/unread-count'),
   markAllRead: (companyId) =>
     api.post('/signals/mark-all-read', null, { params: companyId ? { company_id: companyId } : {} }),
