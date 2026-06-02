@@ -62,12 +62,42 @@ def _send(subject: str, html_body: str, recipients: list[str]) -> bool:
     return False
 
 
+async def send_daily_digest(company_signals: dict[str, list[dict]]) -> bool:
+    """
+    Send a single digest email after the daily job, grouped by company.
+    `company_signals`: {company_name: [signal dicts]} — only medium/high signals.
+    Skips send if the dict is empty.
+    """
+    if not company_signals:
+        logger.info("No signals for digest — skipping email")
+        return False
+
+    recipients = settings.alert_recipients_list
+    if not recipients:
+        logger.info("No alert recipients — skipping digest")
+        return False
+
+    total = sum(len(v) for v in company_signals.values())
+    template = _jinja_env.get_template("daily_digest.html")
+    html_body = template.render(
+        company_signals=company_signals,
+        total_signals=total,
+        company_count=len(company_signals),
+        run_date=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+    )
+
+    subject = (
+        f"[Portfolio Digest] {total} new signal{'s' if total != 1 else ''} "
+        f"across {len(company_signals)} compan{'ies' if len(company_signals) != 1 else 'y'} "
+        f"— {datetime.now(timezone.utc).strftime('%b %d')}"
+    )
+    return _send(subject, html_body, recipients)
+
+
 async def send_signal_alert(signals: list[dict], company_name: str) -> bool:
     """
-    Send an alert email for newly detected signals for a portfolio company.
-
-    `signals` is a list of raw dicts from Claude with keys:
-    type, headline, detail, source, confidence, person_name, importance
+    Send a per-company signal alert (used by manual /refresh endpoint, not the daily job).
+    The daily job uses send_daily_digest instead.
     """
     if not signals:
         return False
