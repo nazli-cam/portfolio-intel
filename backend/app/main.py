@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import logging
+import os
 
 from fastapi import FastAPI, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,7 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import create_tables
 from .routers import auth, companies, signals, reports
-from .services.scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,19 +18,37 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     logger.info("Starting Portfolio Intelligence API...")
-    create_tables()
-    _seed_demo_user()
-    start_scheduler()
+
+    try:
+        create_tables()
+        logger.info("Database tables ready")
+    except Exception as e:
+        logger.error(f"DB init failed: {e}", exc_info=True)
+
+    try:
+        _seed_demo_user()
+    except Exception as e:
+        logger.error(f"Seed user failed: {e}", exc_info=True)
+
+    try:
+        from .services.scheduler import start_scheduler
+        start_scheduler()
+    except Exception as e:
+        logger.error(f"Scheduler failed to start: {e}", exc_info=True)
+
+    logger.info("Startup complete — API ready")
     yield
-    # Shutdown
-    stop_scheduler()
+
+    try:
+        from .services.scheduler import stop_scheduler
+        stop_scheduler()
+    except Exception:
+        pass
     logger.info("Portfolio Intelligence API stopped.")
 
 
 def _seed_demo_user():
-    """Create a default admin user if no users exist."""
     from .database import SessionLocal
     from .models.user import User
     from .routers.auth import hash_password
@@ -46,23 +64,24 @@ def _seed_demo_user():
             )
             db.add(admin)
             db.commit()
-            logger.info("Seeded default admin user: admin@portfoliointel.com / changeme123")
+            logger.info("Seeded default admin: admin@portfoliointel.com / changeme123")
     finally:
         db.close()
 
 
 app = FastAPI(
     title="Portfolio Intelligence API",
-    description="VC Portfolio Intelligence Platform — signal extraction, alerts, and reporting",
+    description="VC Portfolio Intelligence Platform",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# CORS
-allowed_origins = [settings.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"]
-if settings.ENVIRONMENT == "production":
-    # Add your Vercel URL here
-    allowed_origins = [settings.FRONTEND_URL]
+# CORS — always allow localhost for dev; add FRONTEND_URL for prod
+allowed_origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    settings.FRONTEND_URL,
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -72,7 +91,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routers
 app.include_router(auth.router)
 app.include_router(companies.router)
 app.include_router(signals.router)
@@ -94,7 +112,7 @@ async def trigger_daily_job(
     background_tasks: BackgroundTasks,
     current_user=Depends(auth.get_current_user),
 ):
-    """Manually trigger the daily intelligence gathering job (admin only)."""
+    """Manually trigger the daily intelligence gathering job."""
     from .services.scheduler import run_daily_job
     background_tasks.add_task(run_daily_job)
     return {"message": "Daily job triggered in background"}
