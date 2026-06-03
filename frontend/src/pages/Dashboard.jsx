@@ -132,7 +132,7 @@ export default function Dashboard() {
 
   const { data: recentSignals = [] } = useQuery({
     queryKey: ['signals', 'feed'],
-    queryFn: () => signalsApi.list({ limit: 10, order_by: 'created_at', sort: 'desc' }).then((r) => r.data),
+    queryFn: () => signalsApi.list({ limit: 10, order_by: 'detected_at', sort: 'desc' }).then((r) => r.data),
   })
 
   // COUNT(*) queries — no limit, accurate regardless of portfolio size
@@ -222,10 +222,11 @@ export default function Dashboard() {
               <div
                 key={s.id}
                 className={clsx(
-                  'px-5 py-3.5 flex items-start gap-3 hover:bg-gray-50 cursor-pointer',
-                  !s.is_read && 'bg-blue-50/40'
+                  'px-5 py-3.5 flex items-start gap-3 hover:bg-gray-50',
+                  !s.is_read && 'bg-blue-50/40',
+                  s.source_url ? 'cursor-pointer' : 'cursor-default'
                 )}
-                onClick={() => navigate('/signals')}
+                onClick={() => s.source_url && window.open(s.source_url, '_blank', 'noreferrer')}
               >
                 <div className="mt-0.5 shrink-0">
                   <span className={IMPORTANCE_CLASS[s.importance] || 'badge-low'}>
@@ -252,7 +253,7 @@ export default function Dashboard() {
                   )}
                 </div>
                 <span className="text-xs text-gray-400 shrink-0 mt-0.5">
-                  {formatDistanceToNow(new Date(s.created_at), { addSuffix: true })}
+                  {formatDistanceToNow(new Date(s.detected_at), { addSuffix: true })}
                 </span>
               </div>
             ))}
