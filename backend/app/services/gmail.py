@@ -1,187 +1,169 @@
 """
-Gmail API integration for sending signal alerts and monthly reports.
-Uses OAuth2 with a stored refresh token (no user consent flow at runtime).
+Gmail SMTP service for signal alerts and monthly reports.
+Uses smtplib with SSL on port 465 and a Gmail App Password.
 
 Setup:
-1. Go to https://console.cloud.google.com/
-2. Create OAuth2 credentials (Desktop application type)
-3. Enable Gmail API
-4. Run the setup script to get refresh token: python scripts/gmail_setup.py
-5. Set GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN in .env
+1. Enable 2-Step Verification on the Gmail account.
+2. Go to Google Account → Security → App Passwords.
+3. Generate a password for "Mail" → copy the 16-char string.
+4. Set GMAIL_USER and GMAIL_APP_PASSWORD in .env.
 """
-import base64
 import logging
+import smtplib
+import ssl
+from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Optional
+from pathlib import Path
+
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ..config import settings
 
 logger = logging.getLogger(__name__)
 
-
-def _build_gmail_service():
-    """Build Gmail API service using stored OAuth2 credentials."""
-    if not all([settings.GMAIL_CLIENT_ID, settings.GMAIL_CLIENT_SECRET, settings.GMAIL_REFRESH_TOKEN]):
-        logger.warning("Gmail credentials not fully configured")
-        return None
-
-    try:
-        from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
-
-        creds = Credentials(
-            token=None,
-            refresh_token=settings.GMAIL_REFRESH_TOKEN,
-            client_id=settings.GMAIL_CLIENT_ID,
-            client_secret=settings.GMAIL_CLIENT_SECRET,
-            token_uri="https://oauth2.googleapis.com/token",
-            scopes=["https://www.googleapis.com/auth/gmail.send"],
-        )
-        return build("gmail", "v1", credentials=creds)
-    except Exception as e:
-        logger.error(f"Failed to build Gmail service: {e}")
-        return None
+_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+_jinja_env = Environment(
+    loader=FileSystemLoader(str(_TEMPLATES_DIR)),
+    autoescape=select_autoescape(["html"]),
+)
 
 
-def _create_message(
-    sender: str,
-    recipients: list[str],
-    subject: str,
-    html_body: str,
-) -> dict:
-    """Create a Gmail API message dict."""
-    message = MIMEMultipart("alternative")
-    message["Subject"] = subject
-    message["From"] = sender
-    message["To"] = ", ".join(recipients)
-    message.attach(MIMEText(html_body, "html"))
-
-    raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-    return {"raw": raw}
+def _smtp_configured() -> bool:
+    return bool(settings.GMAIL_USER and settings.GMAIL_APP_PASSWORD)
 
 
-def _send_message(service, message: dict) -> bool:
-    try:
-        service.users().messages().send(userId="me", body=message).execute()
-        return True
-    except Exception as e:
-        logger.error(f"Failed to send Gmail message: {e}")
+def _send(subject: str, html_body: str, recipients: list[str]) -> bool:
+    """Send a single HTML email via Gmail SMTP SSL (port 465)."""
+    if not recipients:
+        logger.info("No alert recipients configured — skipping email")
         return False
+    if not _smtp_configured():
+        logger.warning("GMAIL_USER / GMAIL_APP_PASSWORD not set — skipping email send")
+        return False
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = settings.GMAIL_USER
+    msg["To"] = ", ".join(recipients)
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    context = ssl.create_default_context()
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
+            smtp.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD.replace(" ", ""))
+            smtp.sendmail(settings.GMAIL_USER, recipients, msg.as_string())
+        logger.info(f"Email sent to {recipients}: {subject}")
+        return True
+    except smtplib.SMTPAuthenticationError:
+        logger.error("Gmail SMTP authentication failed — check GMAIL_USER and GMAIL_APP_PASSWORD")
+    except Exception as e:
+        logger.error(f"Gmail SMTP error: {e}")
+    return False
+
+
+async def send_daily_digest(
+    company_signals: dict[str, list[dict]],
+    total_new: int = 0,
+    companies_checked: int = 0,
+) -> bool:
+    """
+    Send a single digest email after the daily job.
+
+    Always sends — even when no medium/high signals were found — so the team
+    can distinguish a quiet day from a scheduler failure.
+
+    Args:
+        company_signals: {company_name: [signal dicts]} for medium/high signals only.
+        total_new: total signals saved this run (all importance levels).
+        companies_checked: number of active companies processed.
+    """
+    recipients = settings.alert_recipients_list
+    if not recipients:
+        logger.info("No alert recipients configured — skipping digest")
+        return False
+
+    notable = sum(len(v) for v in company_signals.values())
+    run_date = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    template = _jinja_env.get_template("daily_digest.html")
+    html_body = template.render(
+        company_signals=company_signals,       # empty dict → heartbeat mode in template
+        notable_signals=notable,
+        total_new=total_new,
+        companies_checked=companies_checked,
+        run_date=run_date,
+    )
+
+    if notable:
+        subject = (
+            f"[Portfolio Digest] {notable} notable signal{'s' if notable != 1 else ''} "
+            f"— {datetime.now(timezone.utc).strftime('%b %d')}"
+        )
+    else:
+        subject = (
+            f"[Portfolio Digest] No notable signals — {datetime.now(timezone.utc).strftime('%b %d')}"
+        )
+
+    return _send(subject, html_body, recipients)
 
 
 async def send_signal_alert(signals: list[dict], company_name: str) -> bool:
-    """Send an email alert for new signals detected for a company."""
-    if not settings.alert_recipients_list:
-        logger.info("No alert recipients configured — skipping email")
+    """
+    Send a per-company signal alert (used by manual /refresh endpoint, not the daily job).
+    The daily job uses send_daily_digest instead.
+    """
+    if not signals:
         return False
 
-    service = _build_gmail_service()
-    if not service:
-        logger.warning("Gmail service unavailable — skipping signal alert")
+    recipients = settings.alert_recipients_list
+    if not recipients:
+        logger.info("No alert recipients — skipping signal alert")
         return False
 
-    signal_rows = ""
-    for s in signals:
-        importance_color = {"high": "#dc2626", "medium": "#d97706", "low": "#6b7280"}.get(
-            s.get("importance", "medium"), "#6b7280"
-        )
-        signal_rows += f"""
-        <tr>
-          <td style="padding:8px;border-bottom:1px solid #e5e7eb;">
-            <span style="color:{importance_color};font-weight:600;text-transform:uppercase;font-size:11px;">
-              {s.get("importance","medium")}
-            </span>
-          </td>
-          <td style="padding:8px;border-bottom:1px solid #e5e7eb;">
-            <strong>{s.get("signal_type","").replace("_"," ").title()}</strong>
-          </td>
-          <td style="padding:8px;border-bottom:1px solid #e5e7eb;">{s.get("title","")}</td>
-          <td style="padding:8px;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:13px;">{s.get("description","")}</td>
-        </tr>"""
-
-    html_body = f"""
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;margin:0;padding:20px;">
-  <div style="max-width:700px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1);">
-    <div style="background:#1e3a5f;padding:24px 32px;">
-      <h1 style="color:#fff;margin:0;font-size:20px;">Portfolio Intelligence Alert</h1>
-      <p style="color:#93c5fd;margin:4px 0 0;font-size:14px;">{len(signals)} new signal{"s" if len(signals) > 1 else ""} detected</p>
-    </div>
-    <div style="padding:24px 32px;">
-      <h2 style="margin:0 0 16px;font-size:16px;color:#111827;">{company_name}</h2>
-      <table style="width:100%;border-collapse:collapse;font-size:14px;">
-        <thead>
-          <tr style="background:#f3f4f6;">
-            <th style="padding:8px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">PRIORITY</th>
-            <th style="padding:8px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">TYPE</th>
-            <th style="padding:8px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">SIGNAL</th>
-            <th style="padding:8px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">DETAILS</th>
-          </tr>
-        </thead>
-        <tbody>{signal_rows}</tbody>
-      </table>
-    </div>
-    <div style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;">
-      <p style="margin:0;font-size:12px;color:#9ca3af;">
-        Portfolio Intelligence Platform — <a href="#" style="color:#3b82f6;">View all signals</a>
-      </p>
-    </div>
-  </div>
-</body>
-</html>"""
-
-    message = _create_message(
-        sender=settings.GMAIL_SENDER_EMAIL,
-        recipients=settings.alert_recipients_list,
-        subject=f"[Portfolio Alert] {len(signals)} new signal{'s' if len(signals)>1 else ''} — {company_name}",
-        html_body=html_body,
+    template = _jinja_env.get_template("signal_alert.html")
+    html_body = template.render(
+        company_name=company_name,
+        signal_count=len(signals),
+        signals=signals,
+        run_date=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     )
-    return _send_message(service, message)
+
+    subject = (
+        f"[Portfolio Alert] {len(signals)} new signal"
+        f"{'s' if len(signals) != 1 else ''} — {company_name}"
+    )
+    return _send(subject, html_body, recipients)
 
 
 async def send_monthly_report(
-    report_html: str,
+    claude_html: str,
     month_name: str,
     year: int,
-    signal_count: int,
+    total_signals: int,
+    high_count: int,
+    medium_count: int,
+    company_count: int,
+    company_signals: dict,  # {company_name: [signal dicts]}
 ) -> bool:
-    """Send the monthly portfolio intelligence report via email."""
-    if not settings.alert_recipients_list:
-        logger.info("No alert recipients configured — skipping report email")
+    """Send the monthly portfolio intelligence report as an HTML digest."""
+    recipients = settings.alert_recipients_list
+    if not recipients:
+        logger.info("No alert recipients — skipping report email")
         return False
 
-    service = _build_gmail_service()
-    if not service:
-        logger.warning("Gmail service unavailable — skipping report email")
-        return False
-
-    html_body = f"""
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;margin:0;padding:20px;">
-  <div style="max-width:800px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1);">
-    <div style="background:#1e3a5f;padding:24px 32px;">
-      <h1 style="color:#fff;margin:0;font-size:22px;">Monthly Portfolio Intelligence Report</h1>
-      <p style="color:#93c5fd;margin:6px 0 0;font-size:15px;">{month_name} {year} — {signal_count} signals detected</p>
-    </div>
-    <div style="padding:32px;">
-      {report_html}
-    </div>
-    <div style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;">
-      <p style="margin:0;font-size:12px;color:#9ca3af;">Portfolio Intelligence Platform — Automated Monthly Report</p>
-    </div>
-  </div>
-</body>
-</html>"""
-
-    message = _create_message(
-        sender=settings.GMAIL_SENDER_EMAIL,
-        recipients=settings.alert_recipients_list,
-        subject=f"[Portfolio Report] {month_name} {year} Intelligence Summary",
-        html_body=html_body,
+    template = _jinja_env.get_template("monthly_report.html")
+    html_body = template.render(
+        month_name=month_name,
+        year=year,
+        total_signals=total_signals,
+        high_count=high_count,
+        medium_count=medium_count,
+        company_count=company_count,
+        company_signals=company_signals,
+        claude_html=claude_html,
+        generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     )
-    return _send_message(service, message)
+
+    subject = f"[Portfolio Report] {month_name} {year} Intelligence Summary"
+    return _send(subject, html_body, recipients)

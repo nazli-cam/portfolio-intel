@@ -30,9 +30,66 @@ portfolio-intel/
 - **Monthly Reports** — Claude-generated HTML reports summarizing the month's intelligence
 - **Dashboard** — Live overview with unread signal count and recent activity
 
+## Prerequisites
+
+- Python 3.11+
+- Node.js 20+
+- Docker + Docker Compose (for containerized deployment)
+
 ## Quick Start
 
-### Backend
+### 1. Clone and configure
+
+```bash
+git clone https://github.com/nazli-cam/portfolio-intel.git
+cd portfolio-intel
+cp backend/.env.example backend/.env
+```
+
+Generate a secure `SECRET_KEY` and paste it into `backend/.env`:
+
+```bash
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### 2. Run with Docker Compose
+
+```bash
+# Create the data directory the bind-mount expects
+mkdir -p data
+
+docker compose up --build
+# API:      http://localhost:8000
+# Frontend: http://localhost:5173
+```
+
+### 3. Create your first admin user
+
+On first run, the app seeds a default admin account:
+
+```
+email:    admin@portfoliointel.com
+password: changeme123
+```
+
+**Change this immediately in production** using the `create_admin.py` script:
+
+```bash
+# From the backend/ directory (or inside the running container):
+python scripts/create_admin.py you@yourfirm.com "Your Name" "a-strong-password"
+```
+
+The script is idempotent — running it twice with the same email is safe.
+
+To run it inside the Docker container:
+
+```bash
+docker compose exec backend python scripts/create_admin.py you@yourfirm.com "Your Name" "a-strong-password"
+```
+
+### 4. Local development (without Docker)
+
+**Backend:**
 
 ```bash
 cd backend
@@ -40,27 +97,18 @@ python -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-cp .env.example .env
-# Edit .env with your API keys (see Configuration below)
-
+alembic upgrade head
 uvicorn app.main:app --reload
-# API available at http://localhost:8000
-# Swagger docs at http://localhost:8000/docs
+# API at http://localhost:8000  •  Docs at http://localhost:8000/docs
 ```
 
-Default login: `admin@portfoliointel.com` / `changeme123`
-
-### Frontend
+**Frontend:**
 
 ```bash
 cd frontend
 npm install
-
-cp .env.example .env
-# VITE_API_URL=http://localhost:8000
-
 npm run dev
-# App available at http://localhost:5173
+# App at http://localhost:5173
 ```
 
 ## Configuration
@@ -69,47 +117,67 @@ npm run dev
 
 | Variable | Description | Where to get it |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Claude API key | console.anthropic.com |
-| `APOLLO_API_KEY` | Apollo.io API key | apollo.io → Settings → API |
-| `SECRET_KEY` | JWT signing key | `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `SECRET_KEY` | JWT signing key | `python3 -c "import secrets; print(secrets.token_hex(32))"` |
+| `ANTHROPIC_API_KEY` | Claude API key | console.anthropic.com → API Keys |
+| `APOLLO_API_KEY` | Apollo.io API key | app.apollo.io → Settings → Integrations → API |
 
-### Gmail Setup (for email alerts)
+### Apollo.io Setup
 
-1. Go to Google Cloud Console and create a project
-2. Enable the **Gmail API**
-3. Create **OAuth2 credentials** (Desktop app type)
-4. Set `GMAIL_CLIENT_ID` and `GMAIL_CLIENT_SECRET` in `.env`
-5. Run the setup script to get your refresh token:
-   ```bash
-   cd backend
-   python scripts/gmail_setup.py
+1. Sign in to [Apollo.io](https://app.apollo.io)
+2. Go to **Settings → Integrations → API**
+3. Copy your API key
+4. Set `APOLLO_API_KEY=your-key` in `backend/.env`
+
+### Gmail Setup (App Password)
+
+Gmail alerts use SMTP with an **App Password** — not your account password.
+
+1. Enable **2-Step Verification** on the sending Gmail account (required for App Passwords)
+2. Go to **Google Account → Security → App passwords**
+3. Select app: **Mail** / Select device: **Other** → name it "Portfolio Intel"
+4. Google generates a 16-character password (e.g. `abcd efgh ijkl mnop`)
+5. Set in `backend/.env`:
+   ```env
+   GMAIL_USER=alerts@yourfirm.com
+   GMAIL_APP_PASSWORD=abcdefghijklmnop   # spaces are stripped automatically
+   ALERT_EMAIL_RECIPIENTS=partner1@yourfirm.com,partner2@yourfirm.com
    ```
-6. Copy the printed refresh token to `GMAIL_REFRESH_TOKEN` in `.env`
-7. Set `GMAIL_SENDER_EMAIL` and `ALERT_EMAIL_RECIPIENTS`
 
 ### Full `.env` Reference
 
 ```env
-SECRET_KEY=your-secret-key
-ACCESS_TOKEN_EXPIRE_MINUTES=480
+# Security
+SECRET_KEY=                          # python3 -c "import secrets; print(secrets.token_hex(32))"
+ACCESS_TOKEN_EXPIRE_MINUTES=480      # 8-hour sessions
 
+# Database
 DATABASE_URL=sqlite:///./portfolio_intel.db
 
+# AI + data
 ANTHROPIC_API_KEY=sk-ant-...
-APOLLO_API_KEY=your-apollo-key
+APOLLO_API_KEY=...
 
-GMAIL_CLIENT_ID=...apps.googleusercontent.com
-GMAIL_CLIENT_SECRET=GOCSPX-...
-GMAIL_REFRESH_TOKEN=1//...
-GMAIL_SENDER_EMAIL=alerts@yourfirm.com
+# Gmail SMTP
+GMAIL_USER=alerts@yourfirm.com
+GMAIL_APP_PASSWORD=abcdefghijklmnop  # 16-char App Password, spaces stripped automatically
 ALERT_EMAIL_RECIPIENTS=partner1@yourfirm.com,partner2@yourfirm.com
 
-FRONTEND_URL=https://your-app.vercel.app
+# App
+FRONTEND_URL=http://localhost:5173   # set to production URL in deployment
 DAILY_SCHEDULER_HOUR=8
 DAILY_SCHEDULER_MINUTE=0
+ENVIRONMENT=development              # set to "production" in deployment
 ```
 
 ## Deployment
+
+### Scheduler — Single Worker Requirement
+
+The daily job uses an in-process `AsyncIOScheduler` and an in-memory `is_running` flag to prevent concurrent runs. This works correctly with a single uvicorn worker (the default).
+
+**Do not run multiple workers** (`--workers 4`, `gunicorn -w 4`) without replacing the in-memory flag with a distributed lock (Redis `SET NX`, database row, etc.). Each worker process has its own scheduler instance and its own copy of `is_running`, so the duplicate-run guard will not fire across processes and every worker will execute the daily job independently.
+
+The Railway deployment in `railway.toml` uses the default single-worker uvicorn invocation — do not add `--workers` to that command.
 
 ### Backend → Railway
 
@@ -162,7 +230,7 @@ Interactive Swagger docs at `http://localhost:8000/docs` when running locally.
 1. **Daily Scheduler** (APScheduler, 8 AM UTC) iterates each active portfolio company
 2. **Apollo.io** is queried for current employees and company enrichment data
 3. **Claude Sonnet** (`claude-sonnet-4-6`) analyzes the data with a system prompt cached for cost efficiency, extracting signals across 7 categories
-4. New signals are **deduplicated** (7-day window by title) and saved to SQLite
+4. New signals are **deduplicated** via a SHA-256 hash of `(company_id, type, title[:80])` stored as a unique DB constraint and saved to SQLite
 5. Medium/high importance signals trigger **Gmail alerts** to configured recipients
 6. Monthly **report generation** via Claude synthesizes all signals into an HTML report emailed to the team
 

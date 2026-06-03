@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://portfolio-intel-e2vc.up.railway.app'
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -33,6 +33,7 @@ api.interceptors.response.use(
 export const authApi = {
   login: (email, password) => api.post('/auth/login', { email, password }),
   me: () => api.get('/auth/me'),
+  logout: () => api.post('/auth/logout'),
   register: (data) => api.post('/auth/register', data),
 }
 
@@ -44,6 +45,15 @@ export const companiesApi = {
   update: (id, data) => api.put(`/companies/${id}`, data),
   delete: (id) => api.delete(`/companies/${id}`),
   refresh: (id) => api.post(`/companies/${id}/refresh`),
+  import: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/companies/import', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  downloadTemplate: () =>
+    api.get('/companies/import-template', { responseType: 'blob' }),
+  signals: (id, params = {}) => api.get(`/companies/${id}/signals`, { params }),
+  keyPeople: (id) => api.get(`/companies/${id}/key-people`),
 }
 
 // ─── Signals ─────────────────────────────────────────────────────────────────
@@ -51,9 +61,21 @@ export const signalsApi = {
   list: (params = {}) => api.get('/signals', { params }),
   get: (id) => api.get(`/signals/${id}`),
   update: (id, data) => api.patch(`/signals/${id}`, data),
+  feedback: (id, isAccurate) => api.patch(`/signals/${id}/feedback`, { is_accurate: isAccurate }),
+  count: (params = {}) => api.get('/signals/count', { params }),
   unreadCount: () => api.get('/signals/unread-count'),
   markAllRead: (companyId) =>
     api.post('/signals/mark-all-read', null, { params: companyId ? { company_id: companyId } : {} }),
+}
+
+// ─── Founders ─────────────────────────────────────────────────────────────────
+export const foundersApi = {
+  list: (params = {}) => api.get('/founders', { params }),
+  get: (id) => api.get(`/founders/${id}`),
+  create: (data) => api.post('/founders', data),
+  update: (id, data) => api.put(`/founders/${id}`, data),
+  delete: (id) => api.delete(`/founders/${id}`),
+  signals: (id) => api.get(`/founders/${id}/signals`),
 }
 
 // ─── Reports ─────────────────────────────────────────────────────────────────
@@ -67,6 +89,7 @@ export const reportsApi = {
 
 // ─── Admin ────────────────────────────────────────────────────────────────────
 export const adminApi = {
+  schedulerStatus: () => api.get('/admin/scheduler/status'),
   triggerDailyJob: () => api.post('/admin/trigger-daily-job'),
 }
 

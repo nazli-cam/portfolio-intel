@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+
 from .config import settings
 
 # SQLite requires connect_args for use with FastAPI's threading model
@@ -28,5 +29,5 @@ def get_db():
 
 
 def create_tables():
-    from .models import user, company, signal  # noqa: F401 - ensure models are imported
+    from .models import company, signal, user  # noqa: F401 - ensure models are imported
     Base.metadata.create_all(bind=engine)

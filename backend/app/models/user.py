@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Boolean, Column, DateTime, Integer, String
 from sqlalchemy.sql import func
+
 from ..database import Base
 
 
@@ -12,5 +13,8 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     role = Column(String, default="analyst")  # analyst | partner | admin
     is_active = Column(Boolean, default=True)
+    # Single active session per user (intentional for small VC team). For multi-device,
+    # replace with a refresh_tokens table.
+    refresh_token = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

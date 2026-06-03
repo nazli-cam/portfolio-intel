@@ -1,6 +1,7 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean
+from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+
 from ..database import Base
 
 
@@ -13,10 +14,11 @@ class Company(Base):
     linkedin_url = Column(String, nullable=True)
     description = Column(Text, nullable=True)
     industry = Column(String, nullable=True)
-    stage = Column(String, nullable=True)  # seed, series_a, series_b, growth, etc.
+    stage = Column(String, nullable=True)
     headquarters = Column(String, nullable=True)
     employee_count = Column(Integer, nullable=True)
     founded_year = Column(Integer, nullable=True)
+    categories = Column(JSON, nullable=True, default=list)
     apollo_org_id = Column(String, nullable=True, index=True)
     is_active = Column(Boolean, default=True)
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
@@ -24,3 +26,5 @@ class Company(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     signals = relationship("Signal", back_populates="company", cascade="all, delete-orphan")
+    founders = relationship("Founder", back_populates="company", cascade="all, delete-orphan")
+    key_people = relationship("KeyPerson", back_populates="company", cascade="all, delete-orphan")

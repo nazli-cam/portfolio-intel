@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Monthly Portfolio Report</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;">
+  <tr><td align="center">
+    <table width="680" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.12);">
+
+      <!-- Header -->
+      <tr>
+        <td style="background:#0f172a;padding:32px 40px;">
+          <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:2px;color:#64748b;text-transform:uppercase;">Portfolio Intelligence</p>
+          <h1 style="margin:8px 0 0;font-size:26px;font-weight:700;color:#f8fafc;">Monthly Report</h1>
+          <p style="margin:6px 0 0;font-size:15px;color:#94a3b8;">{{ month_name }} {{ year }}</p>
+        </td>
+      </tr>
+
+      <!-- Stats bar -->
+      <tr>
+        <td style="background:#1e293b;padding:16px 40px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="text-align:center;border-right:1px solid #334155;padding:0 16px 0 0;">
+                <p style="margin:0;font-size:28px;font-weight:700;color:#f8fafc;">{{ total_signals }}</p>
+                <p style="margin:2px 0 0;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Total Signals</p>
+              </td>
+              <td style="text-align:center;border-right:1px solid #334155;padding:0 16px;">
+                <p style="margin:0;font-size:28px;font-weight:700;color:#ef4444;">{{ high_count }}</p>
+                <p style="margin:2px 0 0;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">High Priority</p>
+              </td>
+              <td style="text-align:center;border-right:1px solid #334155;padding:0 16px;">
+                <p style="margin:0;font-size:28px;font-weight:700;color:#f59e0b;">{{ medium_count }}</p>
+                <p style="margin:2px 0 0;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Medium</p>
+              </td>
+              <td style="text-align:center;padding:0 0 0 16px;">
+                <p style="margin:0;font-size:28px;font-weight:700;color:#f8fafc;">{{ company_count }}</p>
+                <p style="margin:2px 0 0;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Companies</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <!-- Claude-generated content -->
+      <tr>
+        <td style="padding:32px 40px;">
+          {{ claude_html | safe }}
+        </td>
+      </tr>
+
+      <!-- Company breakdown -->
+      {% if company_signals %}
+      <tr>
+        <td style="padding:0 40px 32px;">
+          <h2 style="margin:0 0 16px;font-size:16px;font-weight:700;color:#0f172a;border-bottom:2px solid #e2e8f0;padding-bottom:8px;">Company Breakdown</h2>
+          {% for company_name, signals in company_signals.items() %}
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+            <tr>
+              <td style="padding:10px 14px;background:#f8fafc;border-left:3px solid #3b82f6;border-radius:0 4px 4px 0;">
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td><strong style="font-size:14px;color:#0f172a;">{{ company_name }}</strong></td>
+                    <td align="right"><span style="font-size:12px;color:#64748b;">{{ signals | length }} signal{{ 's' if signals | length != 1 else '' }}</span></td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            {% for s in signals %}
+            <tr>
+              <td style="padding:6px 14px;border-bottom:1px solid #f1f5f9;">
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="width:14px;vertical-align:top;padding-top:2px;">
+                      <span style="display:inline-block;width:6px;height:6px;border-radius:50%;margin-top:4px;
+                        {% if s.importance == 'high' %}background:#ef4444;{% elif s.importance == 'medium' %}background:#f59e0b;{% else %}background:#94a3b8;{% endif %}">
+                      </span>
+                    </td>
+                    <td style="padding-left:8px;">
+                      <p style="margin:0;font-size:13px;color:#1e293b;">{{ s.title }}</p>
+                      {% if s.person_name %}
+                      <p style="margin:2px 0 0;font-size:12px;color:#3b82f6;">{{ s.person_name }}</p>
+                      {% endif %}
+                    </td>
+                    <td align="right" style="white-space:nowrap;padding-left:8px;">
+                      <span style="font-size:10px;color:#94a3b8;text-transform:uppercase;">{{ s.signal_type | replace('_', ' ') }}</span>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            {% endfor %}
+          </table>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endif %}
+
+      <!-- Footer -->
+      <tr>
+        <td style="padding:16px 40px 24px;border-top:1px solid #e2e8f0;">
+          <p style="margin:0;font-size:12px;color:#94a3b8;">
+            Portfolio Intelligence Platform &nbsp;·&nbsp; Generated {{ generated_at }}
+          </p>
+        </td>
+      </tr>
+
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>

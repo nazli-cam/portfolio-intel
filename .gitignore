@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.db
+
+# Frontend build artifacts and deps
+frontend/dist/
+frontend/node_modules/
+
+# Local data dir (was used for SQLite bind-mount, no longer needed)
+data/
+
+# Backend
+backend/__pycache__/
+backend/app/**/__pycache__/
+backend/alembic/**/__pycache__/

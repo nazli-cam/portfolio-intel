@@ -1,13 +1,16 @@
-from contextlib import asynccontextmanager
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .database import create_tables
-from .routers import auth, companies, signals, reports
-from .services.scheduler import start_scheduler, stop_scheduler
+from .models.user import User
+from .routers import auth, companies, founders, reports, signals
+from .routers.auth import get_current_user
+from .services.scheduler import get_job_state, start_scheduler, stop_scheduler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,13 +21,11 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     logger.info("Starting Portfolio Intelligence API...")
     create_tables()
     _seed_demo_user()
     start_scheduler()
     yield
-    # Shutdown
     stop_scheduler()
     logger.info("Portfolio Intelligence API stopped.")
 
@@ -32,7 +33,6 @@ async def lifespan(app: FastAPI):
 def _seed_demo_user():
     """Create a default admin user if no users exist."""
     from .database import SessionLocal
-    from .models.user import User
     from .routers.auth import hash_password
 
     db = SessionLocal()
@@ -46,9 +46,18 @@ def _seed_demo_user():
             )
             db.add(admin)
             db.commit()
-            logger.info("Seeded default admin user: admin@portfoliointel.com / changeme123")
+            logger.info("Seeded default admin: admin@portfoliointel.com / changeme123")
     finally:
         db.close()
+
+
+def _require_admin(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin role required",
+        )
+    return current_user
 
 
 app = FastAPI(
@@ -58,11 +67,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
-allowed_origins = [settings.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"]
-if settings.ENVIRONMENT == "production":
-    # Add your Vercel URL here
-    allowed_origins = [settings.FRONTEND_URL]
+# CORS — dev allows localhost origins, production locks to FRONTEND_URL
+_dev_origins = ["http://localhost:5173", "http://localhost:3000"]
+allowed_origins = (
+    [settings.FRONTEND_URL]
+    if settings.ENVIRONMENT == "production"
+    else [settings.FRONTEND_URL] + _dev_origins
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -72,10 +83,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routers
 app.include_router(auth.router)
 app.include_router(companies.router)
 app.include_router(signals.router)
+app.include_router(founders.router)
 app.include_router(reports.router)
 
 
@@ -89,10 +100,25 @@ def health():
     return {"status": "healthy"}
 
 
-@app.post("/admin/trigger-daily-job", tags=["admin"])
-async def trigger_daily_job():
-    """Manually trigger the daily intelligence gathering job."""
-    from .services.scheduler import run_daily_job
-    import asyncio
+# ---------------------------------------------------------------------------
+# Admin endpoints — require admin role
+# ---------------------------------------------------------------------------
+
+@app.get("/admin/scheduler/status", tags=["admin"])
+def scheduler_status(current_user: User = Depends(_require_admin)):
+    """Return current scheduler state: running flag, last run stats, next fire time."""
+    return get_job_state()
+
+
+@app.post("/admin/trigger-daily-job", tags=["admin"], status_code=status.HTTP_202_ACCEPTED)
+async def trigger_daily_job(current_user: User = Depends(_require_admin)):
+    """Manually trigger the daily intelligence job in the background."""
+    from .services.scheduler import _job_state, run_daily_job
+
+    if _job_state["is_running"]:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Daily job is already running",
+        )
     asyncio.create_task(run_daily_job())
-    return {"message": "Daily job triggered in background"}
+    return {"message": "Daily job triggered", "triggered_by": current_user.email}

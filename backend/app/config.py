@@ -1,6 +1,11 @@
-from pydantic_settings import BaseSettings
-from typing import Optional
+import logging
 import secrets
+from typing import Optional
+
+from pydantic import model_validator
+from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -18,14 +23,10 @@ class Settings(BaseSettings):
     # Apollo.io
     APOLLO_API_KEY: Optional[str] = None
 
-    # Gmail OAuth2
-    GMAIL_CLIENT_ID: Optional[str] = None
-    GMAIL_CLIENT_SECRET: Optional[str] = None
-    GMAIL_REFRESH_TOKEN: Optional[str] = None
-    GMAIL_SENDER_EMAIL: str = "alerts@example.com"
-
-    # Alert recipients (comma-separated string)
-    ALERT_EMAIL_RECIPIENTS: str = ""
+    # Gmail SMTP (App Password — not account password)
+    GMAIL_USER: str = ""          # sender address, e.g. alerts@yourfirm.com
+    GMAIL_APP_PASSWORD: str = ""  # Gmail App Password (16-char, spaces optional)
+    ALERT_EMAIL_RECIPIENTS: str = ""  # comma-separated recipient list
 
     # Frontend URL for CORS
     FRONTEND_URL: str = "http://localhost:5173"
@@ -33,6 +34,17 @@ class Settings(BaseSettings):
     # Scheduler times
     DAILY_SCHEDULER_HOUR: int = 8
     DAILY_SCHEDULER_MINUTE: int = 0
+
+    @model_validator(mode="after")
+    def _validate_gmail(self) -> "Settings":
+        if self.GMAIL_APP_PASSWORD:
+            cleaned = self.GMAIL_APP_PASSWORD.replace(" ", "")
+            if len(cleaned) != 16:
+                logger.warning(
+                    f"GMAIL_APP_PASSWORD has {len(cleaned)} chars after stripping spaces "
+                    f"(expected 16). Gmail SMTP will fail at runtime."
+                )
+        return self
 
     @property
     def alert_recipients_list(self) -> list[str]:
