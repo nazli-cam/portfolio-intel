@@ -4,7 +4,7 @@ import clsx from 'clsx'
 
 const nav = [
   { to: '/',          label: 'Dashboard',  icon: LayoutDashboard, end: true },
-  { to: '/companies', label: 'Portfolio',  icon: Building2 },
+  { to: '/companies', label: 'Companies',  icon: Building2 },
   { to: '/founders',  label: 'Founders',   icon: Users },
   { to: '/signals',   label: 'Signals',    icon: Zap },
   { to: '/reports',   label: 'Reports',    icon: FileText },
