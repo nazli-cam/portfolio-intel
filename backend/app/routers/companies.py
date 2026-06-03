@@ -1,15 +1,19 @@
-from typing import List
+import csv
+import io
+from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
+from sqlalchemy import func, or_
+from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
 from ..models.company import Company
-from ..models.signal import Signal
+from ..models.signal import Signal, SignalType
 from ..models.user import User
 from ..routers.auth import get_current_user
 from ..schemas.company import CompanyCreate, CompanyResponse, CompanyUpdate
+from ..schemas.signal import SignalResponse
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -18,6 +22,13 @@ def _company_response(company: Company, db: Session) -> CompanyResponse:
     signal_count = db.query(func.count(Signal.id)).filter(Signal.company_id == company.id).scalar()
     resp = CompanyResponse.model_validate(company)
     resp.signal_count = signal_count
+    return resp
+
+
+def _signal_response(signal: Signal) -> SignalResponse:
+    resp = SignalResponse.model_validate(signal)
+    if signal.company:
+        resp.company_name = signal.company.name
     return resp
 
 
@@ -45,6 +56,109 @@ def create_company(
     db.commit()
     db.refresh(company)
     return _company_response(company, db)
+
+
+@router.get("/import-template")
+def download_import_template(
+    current_user: User = Depends(get_current_user),
+):
+    """Download a pre-filled Excel template for bulk company import."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Companies"
+
+    headers = ["name", "website", "linkedin_url", "sector", "stage", "investment_date", "notes"]
+    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        ws.column_dimensions[cell.column_letter].width = 20
+
+    ws.append(["Acme Corp", "https://acme.com", "https://linkedin.com/company/acme", "SaaS", "Series A", "2023-06-15", "B2B workflow automation"])
+    ws.append(["Beta AI", "https://betaai.io", "", "AI/ML", "Seed", "2024-01-10", "LLM-based document processing"])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=company_import_template.xlsx"},
+    )
+
+
+@router.post("/import")
+async def import_companies(
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Bulk import companies from CSV or XLSX. Admin only."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
+    filename = file.filename or ""
+    if not (filename.endswith(".csv") or filename.endswith(".xlsx")):
+        raise HTTPException(status_code=400, detail="Only .csv and .xlsx files are accepted")
+
+    content = await file.read()
+    rows: list[dict] = []
+
+    if filename.endswith(".xlsx"):
+        from openpyxl import load_workbook
+        wb = load_workbook(filename=io.BytesIO(content), read_only=True, data_only=True)
+        ws = wb.active
+        header_row = [str(c.value).strip().lower() if c.value else "" for c in next(ws.iter_rows(min_row=1, max_row=1))]
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not any(row):
+                continue
+            rows.append({header_row[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row)})
+    else:
+        text = content.decode("utf-8-sig", errors="replace")
+        reader = csv.DictReader(io.StringIO(text))
+        for row in reader:
+            rows.append({k.strip().lower(): (v.strip() if v else "") for k, v in row.items()})
+
+    imported, skipped, errors = 0, 0, []
+
+    for i, row in enumerate(rows, start=2):
+        name = row.get("name", "").strip()
+        if not name:
+            errors.append(f"Row {i}: missing required field 'name'")
+            continue
+
+        website = row.get("website", "").strip() or None
+
+        dup_filter = [func.lower(Company.name) == name.lower()]
+        if website:
+            dup_filter.append(func.lower(Company.website) == website.lower())
+        existing = db.query(Company).filter(or_(*dup_filter)).first()
+        if existing:
+            skipped += 1
+            continue
+
+        industry = row.get("sector", "") or row.get("industry", "") or None
+
+        company = Company(
+            name=name,
+            website=website,
+            linkedin_url=row.get("linkedin_url", "").strip() or None,
+            industry=industry,
+            stage=row.get("stage", "").strip() or None,
+            description=row.get("notes", "").strip() or None,
+        )
+        db.add(company)
+        imported += 1
+
+    db.commit()
+    return {"imported": imported, "skipped": skipped, "errors": errors}
 
 
 @router.get("/{company_id}", response_model=CompanyResponse)
@@ -90,6 +204,27 @@ def delete_company(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
     db.delete(company)
     db.commit()
+
+
+@router.get("/{company_id}/signals", response_model=List[SignalResponse])
+def get_company_signals(
+    company_id: int,
+    signal_type: Optional[SignalType] = None,
+    limit: int = Query(100, le=500),
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if not company:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+
+    q = db.query(Signal).options(joinedload(Signal.company)).filter(Signal.company_id == company_id)
+    if signal_type:
+        q = q.filter(Signal.signal_type == signal_type)
+
+    signals = q.order_by(Signal.detected_at.desc()).offset(offset).limit(limit).all()
+    return [_signal_response(s) for s in signals]
 
 
 @router.post("/{company_id}/refresh", status_code=status.HTTP_202_ACCEPTED)

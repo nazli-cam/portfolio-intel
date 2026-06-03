@@ -45,6 +45,14 @@ export const companiesApi = {
   update: (id, data) => api.put(`/companies/${id}`, data),
   delete: (id) => api.delete(`/companies/${id}`),
   refresh: (id) => api.post(`/companies/${id}/refresh`),
+  import: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/companies/import', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  downloadTemplate: () =>
+    api.get('/companies/import-template', { responseType: 'blob' }),
+  signals: (id, params = {}) => api.get(`/companies/${id}/signals`, { params }),
 }
 
 // ─── Signals ─────────────────────────────────────────────────────────────────

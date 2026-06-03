@@ -4,6 +4,7 @@ import Layout from './components/Layout/Layout'
 import LoginPage from './pages/LoginPage'
 import Dashboard from './pages/Dashboard'
 import Companies from './pages/Companies'
+import CompanyDetail from './pages/CompanyDetail'
 import Signals from './pages/Signals'
 import Reports from './pages/Reports'
 
@@ -43,6 +44,7 @@ function AppRoutes() {
       >
         <Route index element={<Dashboard />} />
         <Route path="companies" element={<Companies />} />
+        <Route path="companies/:id" element={<CompanyDetail />} />
         <Route path="signals" element={<Signals />} />
         <Route path="reports" element={<Reports />} />
       </Route>
