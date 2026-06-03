@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
 from ..models.company import Company
+from ..models.founder import Founder
 from ..models.signal import Signal, SignalType
 from ..models.user import User
 from ..routers.auth import get_current_user
@@ -51,8 +52,14 @@ def create_company(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    company = Company(**company_in.model_dump())
+    founder_list = company_in.founders or []
+    company_data = company_in.model_dump(exclude={'founders'})
+    company = Company(**company_data)
     db.add(company)
+    db.flush()
+    for f in founder_list:
+        if f.name.strip():
+            db.add(Founder(company_id=company.id, **f.model_dump()))
     db.commit()
     db.refresh(company)
     return _company_response(company, db)
@@ -195,8 +202,32 @@ def update_company(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
 
     update_data = company_in.model_dump(exclude_unset=True)
+    founder_list = update_data.pop('founders', None)
+
     for field, value in update_data.items():
         setattr(company, field, value)
+
+    if founder_list is not None:
+        existing = {
+            f.name.lower(): f
+            for f in db.query(Founder).filter(Founder.company_id == company_id).all()
+        }
+        submitted = set()
+        for fd in founder_list:
+            fd_dict = fd if isinstance(fd, dict) else fd.model_dump()
+            name = fd_dict.get('name', '').strip()
+            if not name:
+                continue
+            name_lower = name.lower()
+            submitted.add(name_lower)
+            if name_lower in existing:
+                for k, v in fd_dict.items():
+                    setattr(existing[name_lower], k, v)
+            else:
+                db.add(Founder(company_id=company_id, **fd_dict))
+        for name_lower, founder in existing.items():
+            if name_lower not in submitted:
+                db.delete(founder)
 
     db.commit()
     db.refresh(company)

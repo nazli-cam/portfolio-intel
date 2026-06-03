@@ -1,15 +1,15 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
   Building2, Download, Globe, Linkedin, Plus,
-  Search, Upload, X, Zap,
+  Search, Trash2, Upload, X, Zap,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { useAuth } from '../contexts/AuthContext'
-import { companiesApi } from '../services/api'
+import { companiesApi, foundersApi } from '../services/api'
 
 const CATEGORY_OPTIONS = [
   'Fund 1 Portfolio',
@@ -55,13 +55,42 @@ function CategoryCheckboxes({ value = [], onChange }) {
   )
 }
 
+const EMPTY_FOUNDER = { name: '', linkedin_url: '', twitter_url: '', notes: '' }
+
 function CompanyModal({ company, onClose }) {
   const qc = useQueryClient()
   const isEdit = !!company
   const [categories, setCategories] = useState(company?.categories || [])
+  const [founderRows, setFounderRows] = useState([])
+  const [foundersReady, setFoundersReady] = useState(!isEdit)
+
+  const { data: existingFounders = [] } = useQuery({
+    queryKey: ['founders', 'company', company?.id],
+    queryFn: () => foundersApi.list({ company_id: company.id }).then((r) => r.data),
+    enabled: isEdit && !!company?.id,
+  })
+
+  useEffect(() => {
+    if (isEdit && existingFounders.length > 0 && !foundersReady) {
+      setFounderRows(existingFounders.map((f) => ({
+        name: f.name,
+        linkedin_url: f.linkedin_url || '',
+        twitter_url: f.twitter_url || '',
+        notes: f.notes || '',
+      })))
+      setFoundersReady(true)
+    } else if (isEdit && foundersReady === false) {
+      setFoundersReady(true)
+    }
+  }, [existingFounders, isEdit, foundersReady])
 
   const { register, handleSubmit, formState: { errors } } = useForm({
-    defaultValues: { name: company?.name || '', website: company?.website || '', linkedin_url: company?.linkedin_url || '', description: company?.description || '' },
+    defaultValues: {
+      name: company?.name || '',
+      website: company?.website || '',
+      linkedin_url: company?.linkedin_url || '',
+      description: company?.description || '',
+    },
   })
 
   const mutation = useMutation({
@@ -69,25 +98,41 @@ function CompanyModal({ company, onClose }) {
       isEdit ? companiesApi.update(company.id, data) : companiesApi.create(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['companies'] })
+      qc.invalidateQueries({ queryKey: ['founders'] })
       toast.success(isEdit ? 'Company updated' : 'Company added')
       onClose()
     },
     onError: (err) => toast.error(err.response?.data?.detail || 'Failed to save'),
   })
 
-  const onSubmit = (data) => mutation.mutate({ ...data, categories })
+  const onSubmit = (data) => {
+    const founders = founderRows
+      .filter((f) => f.name.trim())
+      .map((f) => ({
+        name: f.name.trim(),
+        linkedin_url: f.linkedin_url.trim() || null,
+        twitter_url: f.twitter_url.trim() || null,
+        notes: f.notes.trim() || null,
+      }))
+    mutation.mutate({ ...data, categories, founders })
+  }
+
+  const updateRow = (idx, field, val) =>
+    setFounderRows((rows) => rows.map((r, i) => (i === idx ? { ...r, [field]: val } : r)))
+
+  const removeRow = (idx) => setFounderRows((rows) => rows.filter((_, i) => i !== idx))
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <h2 className="font-semibold text-gray-900">{isEdit ? 'Edit Company' : 'Add Company'}</h2>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
             <X size={18} className="text-gray-500" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4 overflow-y-auto flex-1">
           <div>
             <label className="label">Company name *</label>
             <input
@@ -122,6 +167,62 @@ function CompanyModal({ company, onClose }) {
           <div>
             <label className="label">Categories</label>
             <CategoryCheckboxes value={categories} onChange={setCategories} />
+          </div>
+
+          {/* Founders */}
+          <div className="border-t border-gray-100 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <label className="label mb-0">Founders / Key People</label>
+              <button
+                type="button"
+                onClick={() => setFounderRows((rows) => [...rows, { ...EMPTY_FOUNDER }])}
+                className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-800 font-medium"
+              >
+                <Plus size={13} /> Add founder
+              </button>
+            </div>
+            {founderRows.length === 0 && (
+              <p className="text-xs text-gray-400">No founders added yet.</p>
+            )}
+            <div className="space-y-3">
+              {founderRows.map((row, idx) => (
+                <div key={idx} className="border border-gray-100 rounded-lg p-3 space-y-2 relative">
+                  <button
+                    type="button"
+                    onClick={() => removeRow(idx)}
+                    className="absolute top-2 right-2 p-0.5 text-gray-300 hover:text-red-500"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                  <input
+                    value={row.name}
+                    onChange={(e) => updateRow(idx, 'name', e.target.value)}
+                    className="input text-sm"
+                    placeholder="Name *"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={row.linkedin_url}
+                      onChange={(e) => updateRow(idx, 'linkedin_url', e.target.value)}
+                      className="input text-sm"
+                      placeholder="LinkedIn URL"
+                    />
+                    <input
+                      value={row.twitter_url}
+                      onChange={(e) => updateRow(idx, 'twitter_url', e.target.value)}
+                      className="input text-sm"
+                      placeholder="Twitter URL"
+                    />
+                  </div>
+                  <input
+                    value={row.notes}
+                    onChange={(e) => updateRow(idx, 'notes', e.target.value)}
+                    className="input text-sm"
+                    placeholder="Notes (role, background…)"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="flex justify-end gap-3 pt-2">

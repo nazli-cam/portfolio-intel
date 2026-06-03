@@ -4,12 +4,20 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 
+class FounderInline(BaseModel):
+    name: str
+    linkedin_url: Optional[str] = None
+    twitter_url: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class CompanyCreate(BaseModel):
     name: str
     website: Optional[str] = None
     linkedin_url: Optional[str] = None
     description: Optional[str] = None
     categories: Optional[List[str]] = None
+    founders: Optional[List[FounderInline]] = None
 
 
 class CompanyUpdate(BaseModel):
@@ -19,6 +27,7 @@ class CompanyUpdate(BaseModel):
     description: Optional[str] = None
     categories: Optional[List[str]] = None
     is_active: Optional[bool] = None
+    founders: Optional[List[FounderInline]] = None
 
 
 class CompanyResponse(BaseModel):

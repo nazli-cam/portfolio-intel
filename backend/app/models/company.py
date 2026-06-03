@@ -26,4 +26,4 @@ class Company(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     signals = relationship("Signal", back_populates="company", cascade="all, delete-orphan")
-    founders = relationship("Founder", back_populates="company")
+    founders = relationship("Founder", back_populates="company", cascade="all, delete-orphan")
