@@ -99,6 +99,57 @@ def get_job_state() -> dict:
 # Core: process one company
 # ---------------------------------------------------------------------------
 
+def _save_key_people(db, company_id: int, people: list[dict]) -> None:
+    """Upsert Apollo-sourced key people; also create Founder records for founders/CEOs."""
+    from ..models.founder import Founder
+    from ..models.key_person import KeyPerson
+
+    FOUNDER_CEO_KW = frozenset({"founder", "co-founder", "cofounder", "ceo"})
+
+    existing_kp = {
+        kp.name.lower(): kp
+        for kp in db.query(KeyPerson).filter(KeyPerson.company_id == company_id).all()
+    }
+    existing_founder_names = {
+        f.name.lower()
+        for f in db.query(Founder).filter(Founder.company_id == company_id).all()
+    }
+
+    for p in people:
+        name = p.get("name", "").strip()
+        if not name:
+            continue
+        title = p.get("title") or ""
+        is_founder = any(kw in title.lower() for kw in FOUNDER_CEO_KW)
+        name_lower = name.lower()
+
+        if name_lower in existing_kp:
+            kp = existing_kp[name_lower]
+            kp.title = title
+            kp.linkedin_url = p.get("linkedin_url")
+            kp.is_founder = is_founder
+        else:
+            db.add(KeyPerson(
+                company_id=company_id,
+                name=name,
+                title=title,
+                linkedin_url=p.get("linkedin_url"),
+                is_founder=is_founder,
+                apollo_id=p.get("apollo_id"),
+            ))
+
+        if is_founder and name_lower not in existing_founder_names:
+            db.add(Founder(
+                company_id=company_id,
+                name=name,
+                linkedin_url=p.get("linkedin_url"),
+                notes=title,
+            ))
+            existing_founder_names.add(name_lower)
+
+    db.commit()
+
+
 async def process_single_company(company_id: int) -> list[dict]:
     """
     Run the Apollo → Claude → save pipeline for one company.
@@ -108,7 +159,7 @@ async def process_single_company(company_id: int) -> list[dict]:
     from ..models.company import Company
     from ..models.founder import Founder
     from ..models.signal import Signal, SignalImportance, SignalType, compute_dedup_hash
-    from ..services.apollo import enrich_organization, search_people_at_company
+    from ..services.apollo import enrich_organization, fetch_key_people, search_people_at_company
     from ..services.claude_service import extract_signals
 
     db = SessionLocal()
@@ -141,16 +192,26 @@ async def process_single_company(company_id: int) -> list[dict]:
         if people_data:
             raw_data["people"] = people_data.get("people", [])[:30]
 
-        # --- Fetch tracked founders for this company ---
-        founders = db.query(Founder).filter(Founder.company_id == company.id, Founder.is_active).all()
-        key_people = [f.name for f in founders] if founders else None
+        # --- Fetch and save Apollo key people (founders/C-suite) ---
+        apollo_key_people = await fetch_key_people(company.name, domain)
+        if apollo_key_people:
+            _save_key_people(db, company.id, apollo_key_people)
+
+        # --- Build key people context for Claude ---
+        # Combine Apollo key people (name+title) with manually-added founders (name only)
+        kp_names = {p["name"].lower() for p in apollo_key_people}
+        manual_founders = db.query(Founder).filter(
+            Founder.company_id == company.id, Founder.is_active
+        ).all()
+        extra = [f.name for f in manual_founders if f.name.lower() not in kp_names]
+        key_people_ctx: list = list(apollo_key_people) + extra if (apollo_key_people or extra) else None  # type: ignore[assignment]
 
         # --- Claude signal extraction ---
         signals_raw = await extract_signals(
             company_name=company.name,
             raw_data=raw_data,
             context=company.description,
-            key_people=key_people,
+            key_people=key_people_ctx,
         )
 
         company.last_synced_at = datetime.now(timezone.utc)

@@ -151,10 +151,15 @@ async def extract_signals(
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
         context_line = f"\nContext: {context}" if context else ""
-        people_line = (
-            f"\nKey people to watch (flag any activity involving these names): {', '.join(key_people)}"
-            if key_people else ""
-        )
+        if key_people:
+            def _fmt(p: object) -> str:
+                if isinstance(p, dict):
+                    return f"{p['name']} ({p['title']})" if p.get('title') else p['name']
+                return str(p)
+            people_str = ", ".join(_fmt(p) for p in key_people)
+            people_line = f"\nKey people at this company: {people_str}"
+        else:
+            people_line = ""
         user_content = f"""Analyze the following data for **{company_name}** and extract all notable signals.
 
 Company: {company_name}{context_line}{people_line}

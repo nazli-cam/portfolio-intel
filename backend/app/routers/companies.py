@@ -13,7 +13,8 @@ from ..models.founder import Founder
 from ..models.signal import Signal, SignalType
 from ..models.user import User
 from ..routers.auth import get_current_user
-from ..schemas.company import CompanyCreate, CompanyResponse, CompanyUpdate
+from ..models.key_person import KeyPerson
+from ..schemas.company import CompanyCreate, CompanyResponse, CompanyUpdate, KeyPersonResponse
 from ..schemas.signal import SignalResponse
 
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -245,6 +246,23 @@ def delete_company(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
     db.delete(company)
     db.commit()
+
+
+@router.get("/{company_id}/key-people", response_model=List[KeyPersonResponse])
+def get_company_key_people(
+    company_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if not company:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+    return (
+        db.query(KeyPerson)
+        .filter(KeyPerson.company_id == company_id)
+        .order_by(KeyPerson.is_founder.desc(), KeyPerson.name)
+        .all()
+    )
 
 
 @router.get("/{company_id}/signals", response_model=List[SignalResponse])

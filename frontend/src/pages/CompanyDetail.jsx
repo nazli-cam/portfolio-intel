@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { useAuth } from '../contexts/AuthContext'
-import { companiesApi, foundersApi, signalsApi } from '../services/api'
+import { companiesApi, signalsApi } from '../services/api'
 import clsx from 'clsx'
 
 const SIGNAL_TYPE_LABELS = {
@@ -214,9 +214,9 @@ export default function CompanyDetail() {
     enabled: !!id,
   })
 
-  const { data: founders = [] } = useQuery({
-    queryKey: ['founders', 'company', Number(id)],
-    queryFn: () => foundersApi.list({ company_id: id }).then((r) => r.data),
+  const { data: keyPeople = [] } = useQuery({
+    queryKey: ['key-people', Number(id)],
+    queryFn: () => companiesApi.keyPeople(id).then((r) => r.data),
     enabled: !!id,
   })
 
@@ -366,51 +366,50 @@ export default function CompanyDetail() {
       </div>
 
       {/* Key People */}
-      {(founders.length > 0 || isAdmin) && (
-        <div className="card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-900">Key People</h2>
-            {isAdmin && (
-              <span className="text-xs text-gray-400">Edit company to manage founders</span>
-            )}
-          </div>
-          {founders.length === 0 ? (
-            <p className="text-sm text-gray-400">No founders added yet. Click Edit to add key people.</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {founders.map((f) => (
-                <div
-                  key={f.id}
-                  className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50 cursor-pointer"
-                  onClick={() => navigate(`/founders/${f.id}`)}
-                >
-                  <div className="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-sm font-semibold text-brand-700">{f.name[0]}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{f.name}</p>
-                    {f.notes && (
-                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{f.notes}</p>
-                    )}
-                    <div className="flex items-center gap-2 mt-1">
-                      {f.linkedin_url && (
-                        <a href={f.linkedin_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-gray-400 hover:text-brand-600">
-                          <Linkedin size={12} />
-                        </a>
-                      )}
-                      {f.twitter_url && (
-                        <a href={f.twitter_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-gray-400 hover:text-brand-600">
-                          <Twitter size={12} />
-                        </a>
-                      )}
-                    </div>
-                  </div>
+      <div className="card p-6">
+        <h2 className="font-semibold text-gray-900 mb-4">Key People</h2>
+        {keyPeople.length === 0 ? (
+          <p className="text-sm text-gray-400">
+            No key people yet. Run a scan to fetch key people from Apollo.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {keyPeople.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50"
+              >
+                <div className="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-sm font-semibold text-brand-700">{p.name[0]}</span>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
+                    {p.is_founder && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand-100 text-brand-700">
+                        Founder
+                      </span>
+                    )}
+                  </div>
+                  {p.title && (
+                    <p className="text-xs text-gray-500 mt-0.5 truncate">{p.title}</p>
+                  )}
+                  {p.linkedin_url && (
+                    <a
+                      href={p.linkedin_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-gray-400 hover:text-brand-600 mt-1 inline-block"
+                    >
+                      <Linkedin size={12} />
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {showEdit && <EditModal company={company} onClose={() => setShowEdit(false)} />}
     </div>

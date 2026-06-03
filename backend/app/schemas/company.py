@@ -30,6 +30,17 @@ class CompanyUpdate(BaseModel):
     founders: Optional[List[FounderInline]] = None
 
 
+class KeyPersonResponse(BaseModel):
+    id: int
+    name: str
+    title: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    is_founder: bool
+
+    class Config:
+        from_attributes = True
+
+
 class CompanyResponse(BaseModel):
     id: int
     name: str

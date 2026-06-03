@@ -53,6 +53,7 @@ export const companiesApi = {
   downloadTemplate: () =>
     api.get('/companies/import-template', { responseType: 'blob' }),
   signals: (id, params = {}) => api.get(`/companies/${id}/signals`, { params }),
+  keyPeople: (id) => api.get(`/companies/${id}/key-people`),
 }
 
 // ─── Signals ─────────────────────────────────────────────────────────────────

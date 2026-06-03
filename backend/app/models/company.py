@@ -27,3 +27,4 @@ class Company(Base):
 
     signals = relationship("Signal", back_populates="company", cascade="all, delete-orphan")
     founders = relationship("Founder", back_populates="company", cascade="all, delete-orphan")
+    key_people = relationship("KeyPerson", back_populates="company", cascade="all, delete-orphan")

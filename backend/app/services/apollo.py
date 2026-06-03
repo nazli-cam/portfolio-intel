@@ -118,6 +118,36 @@ async def get_recent_hires(
     return recent
 
 
+KEY_PERSON_TITLE_KEYWORDS = frozenset({
+    "founder", "co-founder", "cofounder", "ceo", "cto", "coo", "cfo",
+    "president", "managing director",
+})
+
+
+async def fetch_key_people(
+    org_name: str,
+    org_domain: Optional[str] = None,
+) -> list[dict]:
+    """Fetch leadership/founder-level people at a company from Apollo."""
+    data = await search_people_at_company(org_name, org_domain, per_page=50)
+    if not data:
+        return []
+
+    results = []
+    for person in data.get("people", []):
+        title = (person.get("title") or "").strip()
+        if any(kw in title.lower() for kw in KEY_PERSON_TITLE_KEYWORDS):
+            name = (person.get("name") or "").strip()
+            if name:
+                results.append({
+                    "name": name,
+                    "title": title,
+                    "linkedin_url": person.get("linkedin_url") or None,
+                    "apollo_id": person.get("id") or None,
+                })
+    return results
+
+
 async def search_company_by_name(name: str) -> Optional[dict]:
     """Search for an organization by name."""
     payload = {
