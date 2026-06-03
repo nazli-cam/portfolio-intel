@@ -55,7 +55,11 @@ def create_founder(
     db.add(founder)
     db.commit()
     db.refresh(founder)
-    return _founder_response(db.query(Founder).options(joinedload(Founder.company)).filter(Founder.id == founder.id).first())
+    founder_obj = (
+        db.query(Founder).options(joinedload(Founder.company))
+        .filter(Founder.id == founder.id).first()
+    )
+    return _founder_response(founder_obj)
 
 
 @router.get("/{founder_id}", response_model=FounderResponse)
@@ -86,7 +90,11 @@ def update_founder(
         setattr(founder, field, value)
     db.commit()
     db.refresh(founder)
-    return _founder_response(db.query(Founder).options(joinedload(Founder.company)).filter(Founder.id == founder_id).first())
+    founder_obj = (
+        db.query(Founder).options(joinedload(Founder.company))
+        .filter(Founder.id == founder_id).first()
+    )
+    return _founder_response(founder_obj)
 
 
 @router.delete("/{founder_id}", status_code=status.HTTP_204_NO_CONTENT)

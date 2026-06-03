@@ -36,7 +36,7 @@ def upgrade() -> None:
         sa.Column('company_id', sa.Integer(), nullable=True),
         sa.Column('notes', sa.Text(), nullable=True),
         sa.Column('is_active', sa.Boolean(), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
         sa.ForeignKeyConstraint(['company_id'], ['companies.id']),
         sa.PrimaryKeyConstraint('id'),
     )
