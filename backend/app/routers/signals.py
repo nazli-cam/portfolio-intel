@@ -27,6 +27,8 @@ def list_signals(
     unread_only: bool = False,
     date_from: Optional[datetime] = Query(None, description="ISO-8601 UTC start, e.g. 2024-01-01T00:00:00Z"),
     date_to: Optional[datetime] = Query(None, description="ISO-8601 UTC end, e.g. 2024-01-31T23:59:59Z"),
+    order_by: str = Query("created_at", description="Field to sort by: created_at or detected_at"),
+    sort: str = Query("desc", description="Sort direction: asc or desc"),
     limit: int = Query(50, le=200),
     offset: int = 0,
     db: Session = Depends(get_db),
@@ -45,7 +47,9 @@ def list_signals(
     if date_to:
         q = q.filter(Signal.detected_at <= date_to)
 
-    signals = q.order_by(Signal.detected_at.desc()).offset(offset).limit(limit).all()
+    sort_col = Signal.created_at if order_by == "created_at" else Signal.detected_at
+    sort_expr = sort_col.asc() if sort == "asc" else sort_col.desc()
+    signals = q.order_by(sort_expr).offset(offset).limit(limit).all()
     return [_signal_response(s) for s in signals]
 
 

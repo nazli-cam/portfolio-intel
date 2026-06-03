@@ -132,7 +132,7 @@ export default function Dashboard() {
 
   const { data: recentSignals = [] } = useQuery({
     queryKey: ['signals', 'feed'],
-    queryFn: () => signalsApi.list({ limit: 10 }).then((r) => r.data),
+    queryFn: () => signalsApi.list({ limit: 10, order_by: 'created_at', sort: 'desc' }).then((r) => r.data),
   })
 
   // COUNT(*) queries — no limit, accurate regardless of portfolio size
@@ -252,7 +252,7 @@ export default function Dashboard() {
                   )}
                 </div>
                 <span className="text-xs text-gray-400 shrink-0 mt-0.5">
-                  {formatDistanceToNow(new Date(s.detected_at), { addSuffix: true })}
+                  {formatDistanceToNow(new Date(s.created_at), { addSuffix: true })}
                 </span>
               </div>
             ))}
