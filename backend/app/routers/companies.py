@@ -70,7 +70,7 @@ def download_import_template(
     ws = wb.active
     ws.title = "Companies"
 
-    headers = ["name", "website", "linkedin_url", "sector", "stage", "investment_date", "notes"]
+    headers = ["name", "website", "linkedin_url", "category", "description"]
     header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
 
@@ -78,11 +78,19 @@ def download_import_template(
         cell = ws.cell(row=1, column=col, value=header)
         cell.fill = header_fill
         cell.font = header_font
-        ws.column_dimensions[cell.column_letter].width = 20
+        ws.column_dimensions[cell.column_letter].width = 28 if header in ("name", "description") else 22
+
+    # Add a note on the category cell explaining valid values
+    from openpyxl.comments import Comment
+    cat_cell = ws.cell(row=1, column=4)
+    cat_cell.comment = Comment(
+        "Valid values (one per row):\nFund 1 Portfolio\nFund 2 Portfolio\nFund 3 Portfolio\nUnicorn\nKeep Close",
+        "Template",
+    )
 
     ws.append(["Acme Corp", "https://acme.com", "https://linkedin.com/company/acme",
-               "SaaS", "Series A", "2023-06-15", "B2B workflow automation"])
-    ws.append(["Beta AI", "https://betaai.io", "", "AI/ML", "Seed", "2024-01-10", "LLM-based document processing"])
+               "Fund 1 Portfolio", "B2B workflow automation platform"])
+    ws.append(["Beta AI", "https://betaai.io", "", "Unicorn", "LLM-based document processing"])
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -145,15 +153,16 @@ async def import_companies(
             skipped += 1
             continue
 
-        industry = row.get("sector", "") or row.get("industry", "") or None
+        raw_category = row.get("category", "").strip()
+        valid_categories = {"Fund 1 Portfolio", "Fund 2 Portfolio", "Fund 3 Portfolio", "Unicorn", "Keep Close"}
+        categories = [raw_category] if raw_category in valid_categories else []
 
         company = Company(
             name=name,
             website=website,
             linkedin_url=row.get("linkedin_url", "").strip() or None,
-            industry=industry,
-            stage=row.get("stage", "").strip() or None,
-            description=row.get("notes", "").strip() or None,
+            categories=categories or None,
+            description=row.get("description", "").strip() or None,
         )
         db.add(company)
         imported += 1
