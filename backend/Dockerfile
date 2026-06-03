@@ -11,8 +11,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p /app/data
-
 EXPOSE 8000
 
 # Migrations run first; if they fail the container exits non-zero and uvicorn never starts.

@@ -6,8 +6,8 @@ __pycache__/
 frontend/dist/
 frontend/node_modules/
 
-# SQLite database files (data/ dir is tracked via .gitkeep)
-data/*.db
+# Local data dir (was used for SQLite bind-mount, no longer needed)
+data/
 
 # Backend
 backend/__pycache__/
