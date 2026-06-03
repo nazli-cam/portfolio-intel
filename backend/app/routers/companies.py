@@ -80,7 +80,8 @@ def download_import_template(
         cell.font = header_font
         ws.column_dimensions[cell.column_letter].width = 20
 
-    ws.append(["Acme Corp", "https://acme.com", "https://linkedin.com/company/acme", "SaaS", "Series A", "2023-06-15", "B2B workflow automation"])
+    ws.append(["Acme Corp", "https://acme.com", "https://linkedin.com/company/acme",
+               "SaaS", "Series A", "2023-06-15", "B2B workflow automation"])
     ws.append(["Beta AI", "https://betaai.io", "", "AI/ML", "Seed", "2024-01-10", "LLM-based document processing"])
 
     buf = io.BytesIO()
