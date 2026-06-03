@@ -8,9 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import create_tables
 from .models.user import User
-from .routers import auth, companies, signals, reports
+from .routers import auth, companies, reports, signals
 from .routers.auth import get_current_user
-from .services.scheduler import start_scheduler, stop_scheduler, get_job_state
+from .services.scheduler import get_job_state, start_scheduler, stop_scheduler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -112,7 +112,7 @@ def scheduler_status(current_user: User = Depends(_require_admin)):
 @app.post("/admin/trigger-daily-job", tags=["admin"], status_code=status.HTTP_202_ACCEPTED)
 async def trigger_daily_job(current_user: User = Depends(_require_admin)):
     """Manually trigger the daily intelligence job in the background."""
-    from .services.scheduler import run_daily_job, _job_state
+    from .services.scheduler import _job_state, run_daily_job
 
     if _job_state["is_running"]:
         raise HTTPException(

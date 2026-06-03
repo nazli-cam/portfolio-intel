@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # Prompt caching requires ≥1,024 tokens on the cached block.
 # English prose runs ~3.5–4 chars/token, so this prompt must be ≥4,096 chars.
 # Current length is verified in tests; do not shorten without re-checking.
-SYSTEM_PROMPT = """You are an expert investment analyst at a venture capital firm. Your job is to analyze raw enrichment data about portfolio companies and extract meaningful business intelligence signals that matter to the investment team.
+SYSTEM_PROMPT = """You are an expert investment analyst at a venture capital firm. Your job is to analyze raw enrichment data about portfolio companies and extract meaningful business intelligence signals that matter to the investment team.  # noqa: E501
 
 ## Signal Types
 
@@ -25,7 +25,7 @@ A notable person joining the company. Prioritise:
 - Domain experts whose background directly strengthens the investment thesis
 - Hires from well-known companies (FAANG, top-tier startups, competitor firms)
 
-Indicators in data: employment_history entries where current=true and the start date is recent, LinkedIn headline changes, press releases announcing appointments.
+Indicators in data: employment_history entries where current=true and the start date is recent, LinkedIn headline changes, press releases announcing appointments.  # noqa: E501
 
 ### departure
 A key person leaving the company. Prioritise:
@@ -34,7 +34,7 @@ A key person leaving the company. Prioritise:
 - Long-tenured (3+ year) senior employees leaving
 - Multiple senior departures within a short window (potential talent exodus signal)
 
-Indicators: employment_history entries where a current=false entry was previously current, LinkedIn "former" language, absence from leadership page.
+Indicators: employment_history entries where a current=false entry was previously current, LinkedIn "former" language, absence from leadership page.  # noqa: E501
 
 ### founder_post
 A significant public statement by a founder or C-suite executive. Prioritise:
@@ -82,17 +82,17 @@ Catch-all for signals that don't fit above categories but are clearly material:
 
 ## Importance Calibration
 
-**high** — Partner should be aware before the next weekly meeting. Examples: funding round, co-founder departure, acquisition announcement, C-suite hire from a tier-1 company, product entering a major new market.
+**high** — Partner should be aware before the next weekly meeting. Examples: funding round, co-founder departure, acquisition announcement, C-suite hire from a tier-1 company, product entering a major new market.  # noqa: E501
 
-**medium** — Worth including in the weekly digest. Examples: VP-level hire or departure, tier-1 press mention, product GA launch, strategic partnership with a named Fortune 500 company.
+**medium** — Worth including in the weekly digest. Examples: VP-level hire or departure, tier-1 press mention, product GA launch, strategic partnership with a named Fortune 500 company.  # noqa: E501
 
-**low** — Background signal, good to track over time. Examples: individual contributor hires, minor product updates, general industry mentions, conference appearances.
+**low** — Background signal, good to track over time. Examples: individual contributor hires, minor product updates, general industry mentions, conference appearances.  # noqa: E501
 
 ## Confidence Scoring
 
 Score 0.0–1.0 based on evidence quality in the provided data:
 - **0.90–1.00**: Directly and explicitly stated with specific names, dates, amounts. Multiple corroborating data points.
-- **0.70–0.89**: Clearly implied with at least one concrete data point (e.g., employment record shows new role, LinkedIn bio updated).
+- **0.70–0.89**: Clearly implied with at least one concrete data point (e.g., employment record shows new role, LinkedIn bio updated).  # noqa: E501
 - **0.50–0.69**: Inferred from indirect signals. Include only if the signal would be high or medium importance.
 - **Below 0.50**: Speculative. Omit unless no higher-confidence signals exist and the potential importance is high.
 
@@ -100,12 +100,12 @@ Score 0.0–1.0 based on evidence quality in the provided data:
 
 1. Return ONLY a valid JSON array. No markdown, no commentary, no code fences.
 2. If no signals meet the threshold, return an empty array: []
-3. Each element must have exactly these seven fields: type, headline, detail, source, confidence, person_name, importance
+3. Each element must have exactly these seven fields: type, headline, detail, source, confidence, person_name, importance  # noqa: E501
 4. headline: max 120 characters, present tense, factual (not sensationalised)
 5. detail: 1–2 sentences, max 400 characters, include specific names/titles/numbers where available
 6. source: URL string if present in the data, otherwise null (never fabricate URLs)
 7. person_name: full name of the most relevant individual, or null if not applicable
-8. Do not hallucinate data that is not present in the input. If uncertain, lower the confidence score rather than inventing detail."""
+8. Do not hallucinate data that is not present in the input. If uncertain, lower the confidence score rather than inventing detail."""  # noqa: E501
 
 
 def _parse_json_array(text: str) -> list:
@@ -164,7 +164,8 @@ Example output:
   {{
     "type": "hire",
     "headline": "Sarah Chen joins as VP Engineering",
-    "detail": "Sarah Chen, formerly VP Engineering at Stripe (200-person org), joins to lead technical infrastructure. Deep payments expertise aligns with the company's enterprise roadmap.",
+    "detail": "Sarah Chen, formerly VP Engineering at Stripe (200-person org), joins to lead technical"
+    " infrastructure. Deep payments expertise aligns with the company's enterprise roadmap.",
     "source": "https://linkedin.com/in/sarahchen",
     "confidence": 0.92,
     "person_name": "Sarah Chen",
@@ -231,8 +232,9 @@ async def generate_monthly_summary(
         return "<p><em>Claude API not configured (ANTHROPIC_API_KEY missing).</em></p>"
 
     try:
-        import anthropic
         from calendar import month_name as _month_name
+
+        import anthropic
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
         month_str = f"{_month_name[month]} {year}"

@@ -1,14 +1,14 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
 from ..models.signal import Signal, SignalType
-from ..models.company import Company
-from ..schemas.signal import SignalResponse, SignalUpdate
-from ..routers.auth import get_current_user
 from ..models.user import User
+from ..routers.auth import get_current_user
+from ..schemas.signal import SignalResponse, SignalUpdate
 
 router = APIRouter(prefix="/signals", tags=["signals"])
 
@@ -39,7 +39,7 @@ def list_signals(
     if signal_type:
         q = q.filter(Signal.signal_type == signal_type)
     if unread_only:
-        q = q.filter(Signal.is_read == False)
+        q = q.filter(not Signal.is_read)
     if date_from:
         q = q.filter(Signal.detected_at >= date_from)
     if date_to:
@@ -77,7 +77,7 @@ def unread_count(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    count = db.query(Signal).filter(Signal.is_read == False).count()
+    count = db.query(Signal).filter(not Signal.is_read).count()
     return {"unread_count": count}
 
 
@@ -129,7 +129,7 @@ def mark_all_read(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    q = db.query(Signal).filter(Signal.is_read == False)
+    q = db.query(Signal).filter(not Signal.is_read)
     if company_id:
         q = q.filter(Signal.company_id == company_id)
     updated = q.update({"is_read": True})

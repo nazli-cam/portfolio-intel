@@ -3,9 +3,11 @@ Apollo.io API integration for company and people data enrichment.
 
 Docs: https://apolloio.github.io/apollo-api-docs/
 """
-import httpx
 import logging
 from typing import Optional
+
+import httpx
+
 from ..config import settings
 
 logger = logging.getLogger(__name__)

@@ -1,7 +1,9 @@
-from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime
-from ..models.signal import SignalType, SignalImportance
+from typing import Optional
+
+from pydantic import BaseModel
+
+from ..models.signal import SignalImportance, SignalType
 
 
 class SignalResponse(BaseModel):

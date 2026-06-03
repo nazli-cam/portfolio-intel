@@ -1,14 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from sqlalchemy.orm import Session
+from typing import List
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import func
-from typing import List, Optional
+from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models.company import Company
 from ..models.signal import Signal
-from ..schemas.company import CompanyCreate, CompanyUpdate, CompanyResponse
-from ..routers.auth import get_current_user
 from ..models.user import User
+from ..routers.auth import get_current_user
+from ..schemas.company import CompanyCreate, CompanyResponse, CompanyUpdate
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -28,7 +29,7 @@ def list_companies(
 ):
     q = db.query(Company)
     if active_only:
-        q = q.filter(Company.is_active == True)
+        q = q.filter(Company.is_active)
     companies = q.order_by(Company.name).all()
     return [_company_response(c, db) for c in companies]
 

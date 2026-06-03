@@ -104,15 +104,15 @@ async def process_single_company(company_id: int) -> list[dict]:
     Caller is responsible for sending alerts.
     """
     from ..models.company import Company
-    from ..models.signal import Signal, SignalType, SignalImportance, compute_dedup_hash
-    from ..services.apollo import search_people_at_company, enrich_organization
+    from ..models.signal import Signal, SignalImportance, SignalType, compute_dedup_hash
+    from ..services.apollo import enrich_organization, search_people_at_company
     from ..services.claude_service import extract_signals
 
     db = SessionLocal()
     try:
         company = (
             db.query(Company)
-            .filter(Company.id == company_id, Company.is_active == True)
+            .filter(Company.id == company_id, Company.is_active)
             .first()
         )
         if not company:
@@ -233,7 +233,7 @@ async def run_daily_job() -> None:
     try:
         db = SessionLocal()
         try:
-            companies = db.query(Company).filter(Company.is_active == True).all()
+            companies = db.query(Company).filter(Company.is_active).all()
             company_ids = [(c.id, c.name) for c in companies]
         finally:
             db.close()

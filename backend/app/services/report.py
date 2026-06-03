@@ -28,7 +28,7 @@ async def generate_monthly_report(month: int, year: int, db: Session) -> Report:
         .all()
     )
 
-    companies = db.query(Company).filter(Company.is_active == True).all()
+    companies = db.query(Company).filter(Company.is_active).all()
     company_map = {c.id: c for c in companies}
 
     # Group signals by company name for the email template
