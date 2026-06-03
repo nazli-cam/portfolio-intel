@@ -72,11 +72,20 @@ A material product or go-to-market event. Includes:
 
 Not worth flagging: minor bug fixes, incremental feature updates, UI refreshes.
 
+### exit
+Signals that a portfolio company may be approaching a liquidity event. Prioritise:
+- M&A rumours or acquisition announcements (company as target or acquirer)
+- IPO filings (S-1, F-1), IPO rumours, or public market preparation activity
+- Secondary market transactions indicating investor exit activity or valuation signals
+- Acquihire signals: talent acquisition framed as a product acquisition
+- Strategic buyer interest: inbound from a named corporate
+
+Always flag exit signals as **high** importance regardless of confidence level.
+
 ### other
 Catch-all for signals that don't fit above categories but are clearly material:
 - Regulatory approvals or investigations
 - Key customer wins or losses (named accounts)
-- M&A activity (acquirer or target)
 - Leadership team reorganisations
 - Office openings or closures that signal growth/contraction
 
@@ -125,6 +134,7 @@ async def extract_signals(
     company_name: str,
     raw_data: dict,
     context: Optional[str] = None,
+    key_people: Optional[list[str]] = None,
 ) -> list[dict]:
     """
     Use Claude to extract signals from raw Apollo enrichment data.
@@ -141,9 +151,13 @@ async def extract_signals(
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
         context_line = f"\nContext: {context}" if context else ""
+        people_line = (
+            f"\nKey people to watch (flag any activity involving these names): {', '.join(key_people)}"
+            if key_people else ""
+        )
         user_content = f"""Analyze the following data for **{company_name}** and extract all notable signals.
 
-Company: {company_name}{context_line}
+Company: {company_name}{context_line}{people_line}
 
 Raw Data (Apollo.io enrichment):
 ```json
@@ -151,7 +165,7 @@ Raw Data (Apollo.io enrichment):
 ```
 
 Return a JSON array. Each element must have exactly these fields:
-- "type": one of [hire, departure, founder_post, press, funding, product, other]
+- "type": one of [hire, departure, founder_post, press, funding, product, exit, other]
 - "headline": concise title, max 120 chars
 - "detail": 1–2 sentence description with specific names, titles, and context (max 400 chars)
 - "source": URL string if available, otherwise null

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
-import { ExternalLink, CheckCheck, Filter, Zap } from 'lucide-react'
+import { ExternalLink, CheckCheck, Filter, ThumbsDown, ThumbsUp, Zap } from 'lucide-react'
 import { signalsApi, companiesApi } from '../services/api'
 import clsx from 'clsx'
 
@@ -20,6 +20,7 @@ const TYPE_LABEL = {
   funding: 'Funding',
   partnership: 'Partnership',
   product_launch: 'Product Launch',
+  exit: 'Exit',
   other: 'Other',
 }
 
@@ -30,6 +31,7 @@ const TYPE_COLOR = {
   funding: 'bg-blue-100 text-blue-700',
   partnership: 'bg-indigo-100 text-indigo-700',
   product_launch: 'bg-orange-100 text-orange-700',
+  exit: 'bg-red-900 text-red-100',
   other: 'bg-gray-100 text-gray-600',
 }
 
@@ -40,6 +42,7 @@ export default function Signals() {
     companyId: '',
     signalType: '',
     unreadOnly: searchParams.get('unread') === 'true',
+    hideDuplicates: false,
   })
 
   const { data: companies = [] } = useQuery({
@@ -55,6 +58,7 @@ export default function Signals() {
           company_id: filters.companyId || undefined,
           signal_type: filters.signalType || undefined,
           unread_only: filters.unreadOnly,
+          hide_duplicates: filters.hideDuplicates,
           limit: 100,
         })
         .then((r) => r.data),
@@ -66,6 +70,11 @@ export default function Signals() {
       qc.invalidateQueries({ queryKey: ['signals'] })
       qc.invalidateQueries({ queryKey: ['unread-count'] })
     },
+  })
+
+  const feedbackMutation = useMutation({
+    mutationFn: ({ id, isAccurate }) => signalsApi.feedback(id, isAccurate),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['signals'] }),
   })
 
   const markAllReadMutation = useMutation({
@@ -135,6 +144,15 @@ export default function Signals() {
           />
           Unread only
         </label>
+        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={filters.hideDuplicates}
+            onChange={(e) => setFilters((f) => ({ ...f, hideDuplicates: e.target.checked }))}
+            className="rounded"
+          />
+          Hide duplicates
+        </label>
       </div>
 
       {/* Signal list */}
@@ -173,7 +191,7 @@ export default function Signals() {
                 </span>
 
                 <div className="flex-1 min-w-0">
-                  {/* Company + importance + NEW badge */}
+                  {/* Company + importance + badges */}
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <span className="text-xs font-semibold text-gray-600">{s.company_name}</span>
                     <span className={IMPORTANCE_CLASS[s.importance] || 'badge-low'}>
@@ -182,6 +200,11 @@ export default function Signals() {
                     {!s.is_read && (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand-100 text-brand-700">
                         NEW
+                      </span>
+                    )}
+                    {s.is_duplicate && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-400 border border-gray-200">
+                        Possible duplicate
                       </span>
                     )}
                   </div>
@@ -204,7 +227,6 @@ export default function Signals() {
                   <span className="text-xs text-gray-400">
                     {formatDistanceToNow(new Date(s.detected_at), { addSuffix: true })}
                   </span>
-                  {/* Confidence indicator */}
                   {s.confidence != null && (
                     <span className="text-[10px] text-gray-400 font-medium">
                       {Math.round(s.confidence * 100)}% conf.
@@ -221,6 +243,22 @@ export default function Signals() {
                       <ExternalLink size={13} />
                     </a>
                   )}
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => feedbackMutation.mutate({ id: s.id, isAccurate: true })}
+                      title="Accurate"
+                      className={clsx('p-1 rounded transition-colors', s.is_accurate === true ? 'text-emerald-600 bg-emerald-50' : 'text-gray-300 hover:text-emerald-500')}
+                    >
+                      <ThumbsUp size={12} />
+                    </button>
+                    <button
+                      onClick={() => feedbackMutation.mutate({ id: s.id, isAccurate: false })}
+                      title="Inaccurate"
+                      className={clsx('p-1 rounded transition-colors', s.is_accurate === false ? 'text-red-500 bg-red-50' : 'text-gray-300 hover:text-red-400')}
+                    >
+                      <ThumbsDown size={12} />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

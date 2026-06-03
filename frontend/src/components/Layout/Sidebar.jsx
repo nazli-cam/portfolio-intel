@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Building2, Zap, FileText } from 'lucide-react'
+import { LayoutDashboard, Building2, Zap, FileText, Users } from 'lucide-react'
 import clsx from 'clsx'
 
 const nav = [
   { to: '/',          label: 'Dashboard',  icon: LayoutDashboard, end: true },
   { to: '/companies', label: 'Portfolio',  icon: Building2 },
+  { to: '/founders',  label: 'Founders',   icon: Users },
   { to: '/signals',   label: 'Signals',    icon: Zap },
   { to: '/reports',   label: 'Reports',    icon: FileText },
 ]

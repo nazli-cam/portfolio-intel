@@ -19,6 +19,8 @@ class SignalResponse(BaseModel):
     person_name: Optional[str] = None
     is_read: bool
     is_alerted: bool
+    is_accurate: Optional[bool] = None
+    is_duplicate: Optional[bool] = None
     detected_at: datetime
     created_at: datetime
 
@@ -40,3 +42,7 @@ class SignalCreate(BaseModel):
 
 class SignalUpdate(BaseModel):
     is_read: Optional[bool] = None
+
+
+class SignalFeedback(BaseModel):
+    is_accurate: bool

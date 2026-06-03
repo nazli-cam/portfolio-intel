@@ -60,10 +60,21 @@ export const signalsApi = {
   list: (params = {}) => api.get('/signals', { params }),
   get: (id) => api.get(`/signals/${id}`),
   update: (id, data) => api.patch(`/signals/${id}`, data),
+  feedback: (id, isAccurate) => api.patch(`/signals/${id}/feedback`, { is_accurate: isAccurate }),
   count: (params = {}) => api.get('/signals/count', { params }),
   unreadCount: () => api.get('/signals/unread-count'),
   markAllRead: (companyId) =>
     api.post('/signals/mark-all-read', null, { params: companyId ? { company_id: companyId } : {} }),
+}
+
+// ─── Founders ─────────────────────────────────────────────────────────────────
+export const foundersApi = {
+  list: (params = {}) => api.get('/founders', { params }),
+  get: (id) => api.get(`/founders/${id}`),
+  create: (data) => api.post('/founders', data),
+  update: (id, data) => api.put(`/founders/${id}`, data),
+  delete: (id) => api.delete(`/founders/${id}`),
+  signals: (id) => api.get(`/founders/${id}/signals`),
 }
 
 // ─── Reports ─────────────────────────────────────────────────────────────────

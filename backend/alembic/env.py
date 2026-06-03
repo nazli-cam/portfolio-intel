@@ -11,10 +11,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.config import settings
 from app.database import Base
-import app.models.user      # noqa: F401
 import app.models.company   # noqa: F401
-import app.models.signal    # noqa: F401
+import app.models.founder   # noqa: F401
 import app.models.report    # noqa: F401
+import app.models.signal    # noqa: F401
+import app.models.user      # noqa: F401
 
 config = context.config
 

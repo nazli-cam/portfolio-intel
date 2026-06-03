@@ -38,9 +38,11 @@ _TYPE_MAP = {
     "product":      "product_launch",
     "product_launch": "product_launch",
     "partnership":  "partnership",
+    "exit":         "exit",
     "other":        "other",
     # safety net for future Claude output variations
-    "acquisition":  "other",
+    "acquisition":  "exit",
+    "ipo":          "exit",
     "regulatory":   "other",
     "award":        "other",
 }
@@ -104,6 +106,7 @@ async def process_single_company(company_id: int) -> list[dict]:
     Caller is responsible for sending alerts.
     """
     from ..models.company import Company
+    from ..models.founder import Founder
     from ..models.signal import Signal, SignalImportance, SignalType, compute_dedup_hash
     from ..services.apollo import enrich_organization, search_people_at_company
     from ..services.claude_service import extract_signals
@@ -138,11 +141,16 @@ async def process_single_company(company_id: int) -> list[dict]:
         if people_data:
             raw_data["people"] = people_data.get("people", [])[:30]
 
+        # --- Fetch tracked founders for this company ---
+        founders = db.query(Founder).filter(Founder.company_id == company.id, Founder.is_active).all()
+        key_people = [f.name for f in founders] if founders else None
+
         # --- Claude signal extraction ---
         signals_raw = await extract_signals(
             company_name=company.name,
             raw_data=raw_data,
             context=company.description,
+            key_people=key_people,
         )
 
         company.last_synced_at = datetime.now(timezone.utc)
@@ -155,6 +163,16 @@ async def process_single_company(company_id: int) -> list[dict]:
         # --- Dedup + persist ---
         new_signals: list[dict] = []
         raw_data_json = json.dumps(raw_data, default=str)[:5000]
+
+        from datetime import timedelta
+        from difflib import SequenceMatcher
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        recent_titles = [
+            r[0] for r in db.query(Signal.title)
+            .filter(Signal.company_id == company.id, Signal.created_at >= cutoff)
+            .all()
+        ]
 
         for s in signals_raw:
             title = s.get("headline", s.get("title", ""))[:200].strip()
@@ -175,11 +193,18 @@ async def process_single_company(company_id: int) -> list[dict]:
 
             dedup_hash = compute_dedup_hash(company.id, signal_type.value, title)
             if db.query(Signal).filter(Signal.dedup_hash == dedup_hash).first():
-                continue  # already stored
+                continue  # exact dedup
 
             confidence = s.get("confidence")
             if confidence is not None:
                 confidence = max(0.0, min(1.0, float(confidence)))
+
+            # Fuzzy duplicate detection against recent 30-day signals
+            title_lower = title.lower()
+            is_dup = any(
+                SequenceMatcher(None, title_lower, t.lower()).ratio() > 0.8
+                for t in recent_titles
+            )
 
             signal = Signal(
                 company_id=company.id,
@@ -192,9 +217,11 @@ async def process_single_company(company_id: int) -> list[dict]:
                 dedup_hash=dedup_hash,
                 confidence=confidence,
                 person_name=s.get("person_name"),
+                is_duplicate=is_dup if is_dup else None,
             )
             db.add(signal)
             new_signals.append(s)
+            recent_titles.append(title)  # include in window for subsequent signals this batch
 
         db.commit()
         logger.info(f"[scheduler] {company.name}: saved {len(new_signals)} new signals")

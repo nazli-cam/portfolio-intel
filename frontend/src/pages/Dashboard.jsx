@@ -1,9 +1,9 @@
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { formatDistanceToNow, format } from 'date-fns'
 import {
   Building2, Zap, TrendingUp, Bell, RefreshCw,
-  Clock, CheckCircle, AlertCircle, Loader, WifiOff,
+  Clock, CheckCircle, AlertCircle, Loader, WifiOff, ThumbsUp, ThumbsDown,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { companiesApi, signalsApi, adminApi } from '../services/api'
@@ -122,8 +122,14 @@ function SchedulerStatus() {
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
+
+  const feedbackMutation = useMutation({
+    mutationFn: ({ id, isAccurate }) => signalsApi.feedback(id, isAccurate),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['signals', 'feed'] }),
+  })
 
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
@@ -252,9 +258,27 @@ export default function Dashboard() {
                     <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{s.description}</p>
                   )}
                 </div>
-                <span className="text-xs text-gray-400 shrink-0 mt-0.5">
-                  {formatDistanceToNow(new Date(s.detected_at), { addSuffix: true })}
-                </span>
+                <div className="shrink-0 flex flex-col items-end gap-1.5">
+                  <span className="text-xs text-gray-400">
+                    {formatDistanceToNow(new Date(s.detected_at), { addSuffix: true })}
+                  </span>
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => feedbackMutation.mutate({ id: s.id, isAccurate: true })}
+                      title="Mark accurate"
+                      className={clsx('p-1 rounded transition-colors', s.is_accurate === true ? 'text-emerald-600 bg-emerald-50' : 'text-gray-300 hover:text-emerald-500')}
+                    >
+                      <ThumbsUp size={11} />
+                    </button>
+                    <button
+                      onClick={() => feedbackMutation.mutate({ id: s.id, isAccurate: false })}
+                      title="Mark inaccurate"
+                      className={clsx('p-1 rounded transition-colors', s.is_accurate === false ? 'text-red-500 bg-red-50' : 'text-gray-300 hover:text-red-400')}
+                    >
+                      <ThumbsDown size={11} />
+                    </button>
+                  </div>
+                </div>
               </div>
             ))}
           </div>

@@ -8,7 +8,7 @@ from ..database import get_db
 from ..models.signal import Signal, SignalType
 from ..models.user import User
 from ..routers.auth import get_current_user
-from ..schemas.signal import SignalResponse, SignalUpdate
+from ..schemas.signal import SignalFeedback, SignalResponse, SignalUpdate
 
 router = APIRouter(prefix="/signals", tags=["signals"])
 
@@ -25,6 +25,7 @@ def list_signals(
     company_id: Optional[int] = None,
     signal_type: Optional[SignalType] = None,
     unread_only: bool = False,
+    hide_duplicates: bool = False,
     date_from: Optional[datetime] = Query(None, description="ISO-8601 UTC start, e.g. 2024-01-01T00:00:00Z"),
     date_to: Optional[datetime] = Query(None, description="ISO-8601 UTC end, e.g. 2024-01-31T23:59:59Z"),
     order_by: str = Query("created_at", description="Field to sort by: created_at or detected_at"),
@@ -42,6 +43,8 @@ def list_signals(
         q = q.filter(Signal.signal_type == signal_type)
     if unread_only:
         q = q.filter(not Signal.is_read)
+    if hide_duplicates:
+        q = q.filter((Signal.is_duplicate.is_(None)) | (Signal.is_duplicate.is_(False)))
     if date_from:
         q = q.filter(Signal.detected_at >= date_from)
     if date_to:
@@ -122,6 +125,31 @@ def update_signal(
     for field, value in update_data.items():
         setattr(signal, field, value)
 
+    db.commit()
+    db.refresh(signal)
+    return _signal_response(signal)
+
+
+@router.patch("/{signal_id}/feedback", response_model=SignalResponse)
+def signal_feedback(
+    signal_id: int,
+    feedback: SignalFeedback,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    signal = (
+        db.query(Signal)
+        .options(joinedload(Signal.company))
+        .filter(Signal.id == signal_id)
+        .first()
+    )
+    if not signal:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Signal not found")
+    # Toggle: if same value sent again, clear the vote
+    if signal.is_accurate == feedback.is_accurate:
+        signal.is_accurate = None
+    else:
+        signal.is_accurate = feedback.is_accurate
     db.commit()
     db.refresh(signal)
     return _signal_response(signal)

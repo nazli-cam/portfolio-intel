@@ -25,6 +25,7 @@ class SignalType(str, enum.Enum):
     FUNDING = "funding"
     PARTNERSHIP = "partnership"
     PRODUCT_LAUNCH = "product_launch"
+    EXIT = "exit"
     OTHER = "other"
 
 
@@ -44,12 +45,14 @@ class Signal(Base):
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     source_url = Column(String, nullable=True)
-    raw_data = Column(Text, nullable=True)  # JSON string of raw Apollo/source data
-    confidence = Column(Float, nullable=True)       # 0.0–1.0 from Claude
-    person_name = Column(String(200), nullable=True) # relevant person if applicable
+    raw_data = Column(Text, nullable=True)
+    confidence = Column(Float, nullable=True)
+    person_name = Column(String(200), nullable=True)
     dedup_hash = Column(String(64), nullable=True, index=True, unique=True)
     is_read = Column(Boolean, default=False, index=True)
     is_alerted = Column(Boolean, default=False)
+    is_accurate = Column(Boolean, nullable=True)    # None=not voted, True=correct, False=incorrect
+    is_duplicate = Column(Boolean, nullable=True)   # True=fuzzy-match dup detected on save
     detected_at = Column(DateTime(timezone=True), server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

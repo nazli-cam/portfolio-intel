@@ -25,6 +25,35 @@
         </td>
       </tr>
 
+      {% set exit_signals = [] %}
+      {% for company_name, signals in company_signals.items() %}
+        {% for s in signals %}
+          {% if (s.get('type') or s.get('signal_type') or '') == 'exit' %}
+            {% set _ = exit_signals.append({'company': company_name, 'signal': s}) %}
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+
+      {% if exit_signals %}
+        <!-- Exit signals banner -->
+        <tr>
+          <td style="padding:24px 36px 0;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#7f1d1d;border-radius:6px;overflow:hidden;">
+              <tr>
+                <td style="padding:14px 18px;">
+                  <p style="margin:0;font-size:13px;font-weight:700;color:#fca5a5;letter-spacing:.5px;text-transform:uppercase;">⚠ Exit Signals Detected</p>
+                  {% for item in exit_signals %}
+                  <p style="margin:8px 0 0;font-size:13px;color:#fef2f2;">
+                    <strong>{{ item.company }}</strong> — {{ item.signal.get('headline') or item.signal.get('title') or '' }}
+                  </p>
+                  {% endfor %}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      {% endif %}
+
       {% if company_signals %}
         <!-- Per-company sections -->
         {% for company_name, signals in company_signals.items() %}
@@ -43,8 +72,9 @@
             <!-- Signal cards -->
             {% for s in signals %}
             <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:10px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">
+              {% set sig_type = (s.get('type') or s.get('signal_type') or 'other') %}
               <tr>
-                <td style="padding:12px 14px;background:{% if s.importance == 'high' %}#fef2f2{% elif s.importance == 'medium' %}#fffbeb{% else %}#f8fafc{% endif %};">
+                <td style="padding:12px 14px;background:{% if sig_type == 'exit' %}#450a0a{% elif s.importance == 'high' %}#fef2f2{% elif s.importance == 'medium' %}#fffbeb{% else %}#f8fafc{% endif %};">
                   <!-- badges row -->
                   <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:6px;">
                     <tr>
@@ -55,8 +85,8 @@
                           {% else %}background:#e2e8f0;color:#475569;{% endif %}">
                           {{ s.importance }}
                         </span>
-                        <span style="display:inline-block;margin-left:6px;padding:2px 7px;border-radius:9999px;font-size:10px;font-weight:600;background:#dbeafe;color:#1e40af;text-transform:uppercase;letter-spacing:.4px;">
-                          {{ (s.get('type') or s.get('signal_type') or 'other') | replace('_', ' ') }}
+                        <span style="display:inline-block;margin-left:6px;padding:2px 7px;border-radius:9999px;font-size:10px;font-weight:600;{% if sig_type == 'exit' %}background:#fca5a5;color:#7f1d1d;{% else %}background:#dbeafe;color:#1e40af;{% endif %}text-transform:uppercase;letter-spacing:.4px;">
+                          {{ sig_type | replace('_', ' ') }}
                         </span>
                         {% if s.confidence is not none %}
                         <span style="float:right;font-size:11px;color:#94a3b8;">{{ (s.confidence * 100) | round | int }}% confidence</span>
@@ -65,7 +95,7 @@
                     </tr>
                   </table>
                   <!-- headline + person -->
-                  <p style="margin:0;font-size:14px;font-weight:600;color:#0f172a;line-height:1.4;">
+                  <p style="margin:0;font-size:14px;font-weight:600;{% if sig_type == 'exit' %}color:#fef2f2;{% else %}color:#0f172a;{% endif %}line-height:1.4;">
                     {{ s.get('headline') or s.get('title') or '' }}
                   </p>
                   {% if s.person_name %}

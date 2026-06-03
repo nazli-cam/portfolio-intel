@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import create_tables
 from .models.user import User
-from .routers import auth, companies, reports, signals
+from .routers import auth, companies, founders, reports, signals
 from .routers.auth import get_current_user
 from .services.scheduler import get_job_state, start_scheduler, stop_scheduler
 
@@ -86,6 +86,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(companies.router)
 app.include_router(signals.router)
+app.include_router(founders.router)
 app.include_router(reports.router)
 
 

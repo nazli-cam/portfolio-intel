@@ -4,11 +4,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
-  ArrowLeft, ExternalLink, Globe, Linkedin, Pencil, RefreshCw, X,
+  ArrowLeft, ExternalLink, Globe, Linkedin, Pencil, RefreshCw, ThumbsDown, ThumbsUp, Twitter, X,
 } from 'lucide-react'
-import { format, formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns'
 import { useAuth } from '../contexts/AuthContext'
-import { companiesApi } from '../services/api'
+import { companiesApi, foundersApi, signalsApi } from '../services/api'
+import clsx from 'clsx'
 
 const SIGNAL_TYPE_LABELS = {
   new_hire: 'New Hire',
@@ -17,6 +18,7 @@ const SIGNAL_TYPE_LABELS = {
   funding: 'Funding',
   partnership: 'Partnership',
   product_launch: 'Product Launch',
+  exit: 'Exit',
   other: 'Other',
 }
 
@@ -27,6 +29,7 @@ const SIGNAL_TYPE_COLORS = {
   funding: 'bg-blue-100 text-blue-700',
   partnership: 'bg-yellow-100 text-yellow-700',
   product_launch: 'bg-orange-100 text-orange-700',
+  exit: 'bg-red-900 text-red-100',
   other: 'bg-gray-100 text-gray-600',
 }
 
@@ -38,6 +41,7 @@ const TABS = [
   { key: 'departure', label: 'Departures' },
   { key: 'founder_post', label: 'Press' },
   { key: 'funding', label: 'Funding' },
+  { key: 'exit', label: 'Exit' },
 ]
 
 function EditModal({ company, onClose }) {
@@ -114,16 +118,22 @@ function EditModal({ company, onClose }) {
   )
 }
 
-function SignalCard({ signal }) {
+function SignalCard({ signal, onFeedback }) {
   const typeColor = SIGNAL_TYPE_COLORS[signal.signal_type] || SIGNAL_TYPE_COLORS.other
   const typeLabel = SIGNAL_TYPE_LABELS[signal.signal_type] || signal.signal_type
+  const isExit = signal.signal_type === 'exit'
 
   return (
-    <div className="flex gap-4 py-4 border-b border-gray-50 last:border-0">
-      <div className="pt-0.5 shrink-0">
+    <div className={clsx('flex gap-4 py-4 border-b border-gray-50 last:border-0', isExit && 'bg-red-50/50 -mx-6 px-6 rounded')}>
+      <div className="pt-0.5 shrink-0 flex flex-col gap-1">
         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${typeColor}`}>
-          {typeLabel}
+          {isExit ? '⚠ Exit Signal' : typeLabel}
         </span>
+        {signal.is_duplicate && (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-400 border border-gray-200">
+            Possible duplicate
+          </span>
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-medium text-gray-900 text-sm leading-snug">{signal.title}</p>
@@ -152,6 +162,23 @@ function SignalCard({ signal }) {
           <span className="text-xs text-gray-400 ml-auto">
             {formatDistanceToNow(new Date(signal.detected_at), { addSuffix: true })}
           </span>
+          {/* Vote buttons */}
+          <div className="flex items-center gap-1 ml-2">
+            <button
+              onClick={() => onFeedback(signal.id, true)}
+              title="Accurate"
+              className={clsx('p-1 rounded transition-colors', signal.is_accurate === true ? 'text-emerald-600 bg-emerald-50' : 'text-gray-300 hover:text-emerald-500')}
+            >
+              <ThumbsUp size={12} />
+            </button>
+            <button
+              onClick={() => onFeedback(signal.id, false)}
+              title="Inaccurate"
+              className={clsx('p-1 rounded transition-colors', signal.is_accurate === false ? 'text-red-500 bg-red-50' : 'text-gray-300 hover:text-red-400')}
+            >
+              <ThumbsDown size={12} />
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -161,11 +188,20 @@ function SignalCard({ signal }) {
 export default function CompanyDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
   const [activeTab, setActiveTab] = useState('')
   const [showEdit, setShowEdit] = useState(false)
   const [scanning, setScanning] = useState(false)
+
+  const feedbackMutation = useMutation({
+    mutationFn: ({ signalId, isAccurate }) => signalsApi.feedback(signalId, isAccurate),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['company-signals', Number(id)] }),
+  })
+
+  const handleFeedback = (signalId, isAccurate) =>
+    feedbackMutation.mutate({ signalId, isAccurate })
 
   const { data: company, isLoading: loadingCompany } = useQuery({
     queryKey: ['company', Number(id)],
@@ -175,6 +211,12 @@ export default function CompanyDetail() {
   const { data: signals = [], isLoading: loadingSignals } = useQuery({
     queryKey: ['company-signals', Number(id), activeTab],
     queryFn: () => companiesApi.signals(id, activeTab ? { signal_type: activeTab } : {}).then((r) => r.data),
+    enabled: !!id,
+  })
+
+  const { data: founders = [] } = useQuery({
+    queryKey: ['founders', 'company', Number(id)],
+    queryFn: () => foundersApi.list({ company_id: id }).then((r) => r.data),
     enabled: !!id,
   })
 
@@ -317,11 +359,46 @@ export default function CompanyDetail() {
             </div>
           ) : (
             <div className="mt-2">
-              {signals.map((s) => <SignalCard key={s.id} signal={s} />)}
+              {signals.map((s) => <SignalCard key={s.id} signal={s} onFeedback={handleFeedback} />)}
             </div>
           )}
         </div>
       </div>
+
+      {/* Key People */}
+      {founders.length > 0 && (
+        <div className="card p-6">
+          <h2 className="font-semibold text-gray-900 mb-4">Key People</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {founders.map((f) => (
+              <div
+                key={f.id}
+                className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50 cursor-pointer"
+                onClick={() => navigate(`/founders/${f.id}`)}
+              >
+                <div className="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center shrink-0">
+                  <span className="text-sm font-semibold text-brand-700">{f.name[0]}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{f.name}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {f.linkedin_url && (
+                      <a href={f.linkedin_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-gray-400 hover:text-brand-600">
+                        <Linkedin size={12} />
+                      </a>
+                    )}
+                    {f.twitter_url && (
+                      <a href={f.twitter_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-gray-400 hover:text-brand-600">
+                        <Twitter size={12} />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {showEdit && <EditModal company={company} onClose={() => setShowEdit(false)} />}
     </div>
